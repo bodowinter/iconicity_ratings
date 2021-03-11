@@ -378,6 +378,7 @@ SER_mdl <- brm(rating | weights(w) ~ SER_z,
                data = icon,
                
                # MCMC settings:
+               seed = 666,
                cores = 4, init = 0,
                warmup = 2000, iter = 4000, chains = 4)
 
@@ -434,6 +435,7 @@ AOA_mdl <- brm(rating | weights(w) ~ AOA_z,
                data = icon,
                
                # MCMC settings:
+               seed = 666,
                cores = 4, init = 0,
                warmup = 2000, iter = 4000, chains = 4)
 
@@ -572,6 +574,7 @@ freq_mdl <- brm(rating | weights(w) ~ LogFreq_z,
                 data = icon,
                
                 # MCMC settings:
+                seed = 666,
                 cores = 4, init = 0,
                 warmup = 2000, iter = 4000, chains = 4)
 
@@ -581,6 +584,7 @@ freq_CD_mdl <- brm(rating | weights(w) ~ LogFreq_z + LogCD_z,
                 data = icon,
                
                 # MCMC settings:
+                seed = 666,
                 cores = 4, init = 0,
                 warmup = 2000, iter = 4000, chains = 4)
 
@@ -590,9 +594,10 @@ POS_mdl <- brm(rating | weights(w) ~ POS_simple,
                data = icon_POS,
 
                 # MCMC settings:
+               seed = 666,
                control = mcmc_controls,
-                cores = 4, init = 0,
-                warmup = 2000, iter = 4000, chains = 4)
+               cores = 4, init = 0,
+               warmup = 2000, iter = 4000, chains = 4)
 
 # Save:
 
@@ -638,6 +643,7 @@ POS_null <- brm(rating | weights(w) ~ 1,
                 data = icon_POS,
 
                 # MCMC settings:
+                seed = 666,
                 cores = 4, init = 0,
                 warmup = 2000, iter = 4000, chains = 4)
 ```
@@ -645,6 +651,8 @@ POS_null <- brm(rating | weights(w) ~ 1,
 Then get the LOOs:
 
 ```{r}
+set.seed(666)
+
 # Perform LOO on each model:
 
 POS_loo <- loo(POS_mdl, reloo = TRUE)
@@ -690,6 +698,7 @@ humor_mdl <- brm(rating | weights(w) ~ humor_z,
                data = icon,
                
                # MCMC settings:
+               seed = 666,
                cores = 4, init = 0,
                warmup = 2000, iter = 4000, chains = 4)
 
@@ -783,6 +792,7 @@ lanc_mdl <- brm(rating | weights(w) ~ Aud_z + Gus_z + Hap_z +
                data = icon,
                
                # MCMC settings:
+               seed = 666,
                cores = 4, init = 0,
                warmup = 2000, iter = 4000, chains = 4)
 
@@ -863,6 +873,7 @@ all_mdl <- brm(rating | weights(w) ~ SER_z + AOA_z + LogFreq_z +
                data = icon_POS,
                
                # MCMC settings:
+               seed = 666,
                control = mcmc_controls,
                cores = 4, init = 0,
                warmup = 2000, iter = 4000, chains = 4)
