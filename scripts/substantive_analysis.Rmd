@@ -1,0 +1,881 @@
+---
+title: "Iconicity ratings - substantive analysis"
+author: "Bodo"
+date: "11/03/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This markdown performs a number of different analysis that serve to demonstrate how the iconicity ratings correlate with other psycholinguistic norms that have been collected. This analysis serves multiple purposes. It serves to replicate the results of studies that have been collected with a much smaller norm dataset. And it demonstrates the construct validity of the norms by demonstrating that the ratings pattern with other variables in a way we expect from iconicity.
+
+In addition, we produce some plots 
+
+## Data and package loading
+
+Load packages:
+
+```{r, warning = FALSE, message = FALSE}
+library(brms)
+library(tidyverse)
+library(patchwork)
+```
+
+For reproducibility:
+
+```{r}
+packageVersion('brms')
+packageVersion('tidyverse')
+R.Version()$version.string
+```
+
+Load iconicity ratings:
+
+```{r, warning = FALSE, message = FALSE}
+icon <- read_csv('../ratings/iconicity_ratings.csv')
+```
+
+Load additional datasets:
+
+```{r, warning = FALSE, message = FALSE}
+SER <- read_csv('../additional_data/juhasz_yap_2013_SER.csv')
+AOA <- read_csv('../additional_data/kuperman_2012_AOA.csv')
+lanc <- read_csv('../additional_data/lancaster_sensorimotor_norms_2019.csv')
+SUBTL <- read_csv('../additional_data/brysbaert_2012_SUBTLEX_POS.csv')
+humor <- read_csv('../additional_data/engelthaler_hills_2018_humor.csv')
+```
+
+Rename folders and simplify data frames to include only relevant info. Also make Lancaster norm Word column lowercase. Log10 transform SUBTLEX frequencies and contextual diversity:
+
+```{r}
+# Age-of-acquisition data:
+
+AOA <- AOA %>% select(Word, Rating.Mean) %>% 
+  rename(AOA = Rating.Mean)
+
+# Sensory experience ratings:
+
+SER <- select(SER, Word, SER)
+
+# Lancaster sensorimotor norms:
+
+lanc <- lanc %>%
+  mutate(Word = str_to_lower(Word)) %>% 
+  select(Word:Visual.mean, Dominant.perceptual,
+         Max_strength.perceptual) %>% 
+  rename(Aud = Auditory.mean,
+         Gus = Gustatory.mean,
+         Hap = Haptic.mean,
+         Int = Interoceptive.mean,
+         Olf = Olfactory.mean,
+         Vis = Visual.mean,
+         Mod = Dominant.perceptual,
+         Max_perceptual = Max_strength.perceptual)
+
+# Frequency, contextual diversity, and part-of-speech:
+
+SUBTL <- SUBTL %>% 
+  rename(Freq = FREQcount,
+         CD = CDcount,
+         POS = Dom_PoS_SUBTLEX) %>% 
+  select(Word, Freq, CD, POS)
+
+# Playfulness:
+  
+humor <- select(humor, word, mean) %>%
+  rename(humor = mean)
+```
+
+## Check the distribution for reporting
+
+First, mean and SD:
+
+```{r}
+icon %>% summarize(M = mean(rating),
+                   SD = sd(rating),
+                   SD = round(SD, 2))
+```
+
+Make a double plot with the distribution and a Pollock (2018) style plot with mean against SD. First, the iconicity plot:
+
+```{r, fig.width = 8, fig.height = 6}
+# Main plot with mappings:
+
+icon_p <- icon %>%
+  ggplot(aes(x = rating))
+
+# Add normal curve:
+
+icon_p <- icon_p + 
+  stat_function(fun = dnorm,
+                args = list(mean = mean(icon$rating),
+                            sd = sd(icon$rating)),
+                col = 'black',
+                linetype = 2)
+
+# Add density geom:
+
+icon_p <- icon_p + 
+  geom_density(fill = 'steelblue', alpha = 0.7, col = 'black')
+
+# Add cosmetics:
+
+icon_p <- icon_p + 
+  ylim(0, 0.5) + 
+  xlab('Iconicity rating') +
+  ylab('Density') +
+  theme_minimal() +
+  
+  # Axis labels:
+  theme(axis.title.x = element_text(face = 'bold',
+                                    size = 16,
+                                    margin = margin(t = 10, b = 0,
+                                                    l = 0, r = 0)),
+        axis.title.y = element_text(face = 'bold',
+                                    size = 16,
+                                    margin = margin(r = 15, l = 0,
+                                                    t = 0, b = 0))) +
+  
+  # Axis tick marks:
+  theme(axis.text.x = element_text(face = 'bold',
+                                   size = 12),
+        axis.text.y = element_text(face = 'bold',
+                                   size = 12))
+
+# Show in markdown:
+
+icon_p
+
+# Save:
+
+ggsave(plot = icon_p,
+       filename = '../figures/iconicity_ratings_density.pdf',
+       width = 8, height = 6)
+```
+
+Create a Q-Q plot. First, get the quartiles of this distribution (x), against the quartiles of the normal (y):
+
+```{r}
+QQ <- tibble(x = qqnorm(icon$rating, plot = FALSE)$x,
+             y = qqnorm(icon$rating, plot = FALSE)$y)
+```
+
+Make a plot out of this:
+
+```{r, fig.width = 8, fig.height = 6}
+# Main plot:
+
+qq_p <- QQ %>%
+  ggplot(aes(x = x, y = y)) +
+  geom_point(alpha = 0.2)
+
+# Add cosmetics:
+
+qq_p <- qq_p + 
+  xlab('Theoretical quantiles') +
+  ylab('Sample quantiles') +
+  theme_minimal() +
+  
+  # Axis labels:
+  theme(axis.title.x = element_text(face = 'bold',
+                                    size = 16,
+                                    margin = margin(t = 10, b = 0,
+                                                    l = 0, r = 0)),
+        axis.title.y = element_text(face = 'bold',
+                                    size = 16,
+                                    margin = margin(r = 15, l = 0,
+                                                    t = 0, b = 0))) +
+  
+  # Axis tick marks:
+  theme(axis.text.x = element_text(face = 'bold',
+                                   size = 12),
+        axis.text.y = element_text(face = 'bold',
+                                   size = 12))
+
+# Show in markdown:
+
+qq_p
+
+# Save:
+
+ggsave(plot = qq_p,
+       filename = '../figures/QQ_plot.pdf',
+       width = 8, height = 6)
+```
+
+Create a double plot of this (with titles):
+
+```{r, fig.width = 12, fig.height = 6}
+# Add titles:
+
+icon_p <- icon_p +
+  ggtitle('(a) Iconicity rating distribution') +
+  theme(title = element_text(face = 'bold',
+                             size = 18,
+                             margin = margin(t = 0, b = 15,
+                                             r = 0, l = 0)))
+
+qq_p <- qq_p +
+  ggtitle('(b) Q-Q plot of iconicity ratings') +
+  theme(title = element_text(face = 'bold',
+                             size = 18,
+                             margin = margin(t = 0, b = 15,
+                                             r = 0, l = 0)))
+
+# Put into plot together:
+
+figure_1 <- icon_p + plot_spacer() + qq_p +
+  plot_layout(widths = c(8, 1, 8))
+
+
+# Show in script:
+
+figure_1
+
+# Save:
+
+ggsave(plot = figure_1,
+       filename = '../figures/figure1.pdf',
+       width = 12, height = 5)
+```
+
+
+Create the Pollock (2018) style plot:
+
+```{r, fig.width = 8, fig.height = 6}
+# Main plot:
+
+pollock_p <- icon %>%
+  ggplot(aes(x = rating, y = rating_sd)) +
+  geom_point(alpha = 0.2)
+
+# Add cosmetics:
+
+pollock_p <- pollock_p + 
+  xlab('Mean') +
+  ylab('Standard deviation') +
+  theme_minimal() +
+  
+  # Axis labels:
+  theme(axis.title.x = element_text(face = 'bold',
+                                    size = 16,
+                                    margin = margin(t = 10, b = 0,
+                                                    l = 0, r = 0)),
+        axis.title.y = element_text(face = 'bold',
+                                    size = 16,
+                                    margin = margin(r = 15, l = 0,
+                                                    t = 0, b = 0))) +
+  
+  # Axis tick marks:
+  theme(axis.text.x = element_text(face = 'bold',
+                                   size = 12),
+        axis.text.y = element_text(face = 'bold',
+                                   size = 12))
+
+# Show in markdown:
+
+pollock_p
+
+# Save:
+
+ggsave(plot = pollock_p,
+       filename = '../figures/pollock_2018.pdf',
+       width = 8, height = 6)
+```
+
+For reporting, 10 most iconic words:
+
+```{r}
+arrange(icon, desc(rating))
+```
+
+And 10 least iconic words:
+
+```{r}
+arrange(icon, rating)
+```
+
+## Bayesian regression settings for all analyses
+
+These settings will be carried through. First, options for parallel processing to use all cores from the respective computer:
+
+```{r}
+options(mc.cores=parallel::detectCores())
+```
+
+Weakly informative priors on slope coefficient:
+
+```{r}
+priors <- c(prior(normal(0, 1), class = b))
+```
+
+For MCMC settings (will be used only for models that find it hard to converge):
+
+```{r}
+mcmc_controls <- list(adapt_delta = 0.999,
+                      max_treedepth = 13)
+```
+
+We will convert the SDs to the range 0 to 1. I used this as a guide:
+
+https://stackoverflow.com/questions/929103/convert-a-number-range-to-another-range-maintaining-ratio
+
+```{r}
+# mins and maxes:
+
+sd_min <- min(icon$rating_sd)
+sd_max <- max(icon$rating_sd)
+
+# convert:
+
+icon <- mutate(icon,
+               w = (rating_sd - sd_min) / (sd_max - sd_min),
+               
+               # to invert (so that max SD = lowest weight):
+               w = w * -1 + 1,
+               
+               # renormalize these weights to have mean 1:
+               
+               w = w / mean(w))
+
+# check:
+
+mean(icon$w)
+arrange(icon, desc(w))
+arrange(icon, w)
+```
+
+## Analysis 1: Analysis of sensory experience ratings
+
+Combine data with SER:
+
+```{r}
+icon <- left_join(icon, SER, by = c('word' = 'Word'))
+```
+
+Z-score the SER variable:
+
+```{r}
+icon <- mutate(icon,
+               SER_z = SER - mean(SER, na.rm = TRUE),
+               SER_z = SER_z / sd(SER_z, na.rm = TRUE))
+```
+
+How many data points?
+
+```{r}
+filter(icon, !is.na(SER)) %>% nrow()
+```
+
+Regression iconicity ratings onto sensory experience ratings:
+
+```{r, warning = FALSE, message = FALSE}
+SER_mdl <- brm(rating | weights(w) ~ SER_z,
+               data = icon,
+               
+               # MCMC settings:
+               cores = 4, init = 0,
+               warmup = 2000, iter = 4000, chains = 4)
+
+# Save:
+
+save(SER_mdl, file = '../models/SER_mdl.RData')
+```
+
+Show the model:
+
+```{r}
+summary(SER_mdl)
+```
+
+Posterior probability of the SER effect being of opposite sign:
+
+```{r}
+posts <- posterior_samples(SER_mdl)
+sum(posts$b_SER_z < 0) / nrow(posts)
+```
+
+Compute Bayes R-squared:
+
+```{r}
+bayes_R2(SER_mdl)
+```
+
+## Analysis 2: Analysis of AOA
+
+Combine data with AOA:
+
+```{r}
+icon <- left_join(icon, AOA, by = c('word' = 'Word'))
+```
+
+Z-score the AOA variable:
+
+```{r}
+icon <- mutate(icon,
+               AOA_z = AOA - mean(AOA, na.rm = TRUE),
+               AOA_z = AOA_z / sd(AOA_z, na.rm = TRUE))
+```
+
+How many data points?
+
+```{r}
+filter(icon, !is.na(AOA)) %>% nrow()
+```
+
+Regression iconicity ratings onto age of acquisition ratings:
+
+```{r, warning = FALSE, message = FALSE}
+AOA_mdl <- brm(rating | weights(w) ~ AOA_z,
+               data = icon,
+               
+               # MCMC settings:
+               cores = 4, init = 0,
+               warmup = 2000, iter = 4000, chains = 4)
+
+# Save:
+
+save(AOA_mdl, file = '../models/AOA_mdl.RData')
+```
+
+Show the model:
+
+```{r}
+summary(AOA_mdl)
+```
+
+Posterior probability of the SER effect being of opposite sign:
+
+```{r}
+posts <- posterior_samples(AOA_mdl)
+sum(posts$b_AOA_z > 0) / nrow(posts)
+```
+
+Compute Bayes R-squared:
+
+```{r}
+bayes_R2(AOA_mdl)
+```
+
+## Analysis 3: SUBTLEX: Frequency, CD, and Part-of-speech tags
+
+Combine data with SUBTL:
+
+```{r}
+icon <- left_join(icon, SUBTL, by = c('word' = 'Word'))
+```
+
+How many data points?
+
+```{r}
+filter(icon, !is.na(Freq)) %>% nrow()
+```
+
+Here, an NA is a true zero:
+
+```{r}
+icon <- mutate(icon,
+               Freq = ifelse(is.na(Freq), 0, Freq),
+               CD = ifelse(is.na(CD), 0, CD))
+```
+
+Log-transform that:
+
+```{r}
+icon <- mutate(icon,
+               LogFreq = log10(Freq + 1),
+               LogCD = log10(CD + 1))
+```
+
+Z-score the LogFreq and LogCD variables:
+
+```{r}
+icon <- mutate(icon,
+               # Log frequency:
+               LogFreq_z = LogFreq - mean(LogFreq, na.rm = TRUE),
+               LogFreq_z = LogFreq_z / sd(LogFreq_z, na.rm = TRUE),
+               
+               # Log CD:
+               LogCD_z = LogCD - mean(LogCD, na.rm = TRUE),
+               LogCD_z = LogCD_z / sd(LogCD_z, na.rm = TRUE))
+```
+
+
+Process the part-of-speech information to collapse categories for better representation. First show what categories there are:
+
+```{r}
+sort(table(icon$POS))
+```
+
+Define vector of stuff to set as function words. "Ex" = there. "#N/A" are words like "gonna", "wanna". 
+
+```{r}
+gram <- c('#N/A', 'Article', 'Conjunction',
+          'Determiner', 'Not', 'Number',
+          'Preposition', 'Pronoun', 'To',
+          'Ex')
+```
+
+Set this to function words in a new POS variable:
+
+```{r}
+icon <- mutate(icon,
+               POS_simple = ifelse(POS %in% gram, 'function', POS))
+```
+
+Check categories:
+
+```{r}
+table(icon$POS_simple)
+```
+
+Get a reduced POS data frame without names and unclassifieds:
+
+```{r}
+icon_POS <- filter(icon,
+                   !POS_simple %in% c('Unclassified', 'Name'))
+```
+
+Check:
+
+```{r}
+table(icon_POS$POS_simple)
+```
+
+Average iconicity for these:
+
+```{r}
+icon_POS %>% group_by(POS_simple) %>% 
+  summarize(M = mean(rating),
+            SD = sd(rating)) %>% 
+  arrange(desc(M))
+```
+
+Make function the reference level:
+
+```{r}
+icon_POS <- mutate(icon_POS,
+                   POS_simple = factor(POS_simple),
+                   POS_simple = relevel(POS_simple, ref = 'function'))
+```
+
+Regression iconicity ratings onto frequency, CD controlling for freq, and POS:
+
+```{r, warning = FALSE, message = FALSE}
+# Frequency model:
+
+freq_mdl <- brm(rating | weights(w) ~ LogFreq_z,
+                data = icon,
+               
+                # MCMC settings:
+                cores = 4, init = 0,
+                warmup = 2000, iter = 4000, chains = 4)
+
+# Contextual diversity model:
+
+freq_CD_mdl <- brm(rating | weights(w) ~ LogFreq_z + LogCD_z,
+                data = icon,
+               
+                # MCMC settings:
+                cores = 4, init = 0,
+                warmup = 2000, iter = 4000, chains = 4)
+
+# POS model:
+
+POS_mdl <- brm(rating | weights(w) ~ POS_simple,
+               data = icon_POS,
+
+                # MCMC settings:
+               control = mcmc_controls,
+                cores = 4, init = 0,
+                warmup = 2000, iter = 4000, chains = 4)
+
+# Save:
+
+save(freq_mdl, file = '../models/freq_mdl.RData')
+save(freq_CD_mdl, file = '../models/freq_CD_mdl.RData')
+save(POS_mdl, file = '../models/POS_mdl.RData')
+```
+
+Show the models:
+
+```{r}
+summary(freq_mdl)
+summary(freq_CD_mdl)
+summary(POS_mdl)
+```
+
+Posterior probability of the SER effect being of opposite sign:
+
+```{r}
+# Extract posteriors:
+
+freq_posts <- posterior_samples(freq_mdl)
+CD_posts <- posterior_samples(freq_CD_mdl)
+
+# Compute posterior probabilities:
+
+sum(freq_posts$b_freq_z > 0) / nrow(freq_posts)
+sum(CD_posts$b_CD_z > 0) / nrow(CD_posts)
+```
+
+Compute Bayes R-squared:
+
+```{r}
+bayes_R2(freq_mdl)
+bayes_R2(freq_CD_mdl)
+bayes_R2(POS_mdl)
+```
+
+For the POS model it makes sense to do an omnibus "test" of part-of-speech since it is a predictor with multiple levels. We can do that with LOO-CV. For this we need to build the corresponding null model:
+
+```{r}
+POS_null <- brm(rating | weights(w) ~ 1,
+                data = icon_POS,
+
+                # MCMC settings:
+                cores = 4, init = 0,
+                warmup = 2000, iter = 4000, chains = 4)
+```
+
+Then get the LOOs:
+
+```{r}
+# Perform LOO on each model:
+
+POS_loo <- loo(POS_mdl, reloo = TRUE)
+POS_null_loo <- loo(POS_null, reloo = TRUE)
+
+# Compare LOO:
+
+both_loo <- loo_compare(POS_loo, POS_null)
+```
+
+Show:
+
+```{r}
+both_loo
+```
+
+## Analysis 4: Humor ratings
+
+Combine data with humor ratings:
+
+```{r}
+icon <- left_join(icon, humor, by = c('word' = 'word'))
+```
+
+Z-score the humor variable:
+
+```{r}
+icon <- mutate(icon,
+               humor_z = humor - mean(humor, na.rm = TRUE),
+               humor_z = humor_z / sd(humor_z, na.rm = TRUE))
+```
+
+How many data points?
+
+```{r}
+filter(icon, !is.na(humor)) %>% nrow()
+```
+
+Regression iconicity ratings onto age of acquisition ratings:
+
+```{r, warning = FALSE, message = FALSE}
+humor_mdl <- brm(rating | weights(w) ~ humor_z,
+               data = icon,
+               
+               # MCMC settings:
+               cores = 4, init = 0,
+               warmup = 2000, iter = 4000, chains = 4)
+
+# Save:
+
+save(humor_mdl, file = '../models/humor_mdl.RData')
+```
+
+Show the model:
+
+```{r}
+summary(humor_mdl)
+```
+
+Posterior probability of the SER effect being of opposite sign:
+
+```{r}
+posts <- posterior_samples(humor_mdl)
+sum(posts$b_humor_z < 0) / nrow(posts)
+```
+
+Compute Bayes R-squared:
+
+```{r}
+bayes_R2(humor_mdl)
+```
+
+## Analysis 5: Lancaster sensorimotor ratings
+
+Merge with lanc:
+
+```{r}
+icon <- left_join(icon, lanc, by = c('word' = 'Word'))
+```
+
+Z-score all predictors:
+
+```{r}
+icon <- mutate(icon,
+               Aud_z = Aud - mean(Aud, na.rm = TRUE),
+               Aud_z = Aud_z / sd(Aud_z, na.rm = TRUE),
+               
+               Gus_z = Gus - mean(Gus, na.rm = TRUE),
+               Gus_z = Gus_z / sd(Gus_z, na.rm = TRUE),
+               
+               Hap_z = Hap - mean(Hap, na.rm = TRUE),
+               Hap_z = Hap_z / sd(Hap_z, na.rm = TRUE),
+               
+               Int_z = Int - mean(Int, na.rm = TRUE),
+               Int_z = Int_z / sd(Int_z, na.rm = TRUE),
+               
+               Olf_z = Olf - mean(Olf, na.rm = TRUE),
+               Olf_z = Olf_z / sd(Olf_z, na.rm = TRUE),
+               
+               Vis_z = Vis - mean(Vis, na.rm = TRUE),
+               Vis_z = Vis_z / sd(Vis_z, na.rm = TRUE))
+```
+
+How many data points?
+
+```{r}
+filter(icon, !is.na(Aud_z)) %>% nrow()
+```
+
+Check the dominant perceptual modality:
+
+```{r}
+icon %>% group_by(Mod) %>% 
+  summarize(M = mean(rating),
+            SD = sd(rating)) %>% 
+  arrange(desc(M))
+```
+
+Check the dominant perceptual modality only for very perceptual words:
+
+```{r}
+icon %>% 
+  filter(!is.na(Max_perceptual)) %>% 
+  filter(Max_perceptual > quantile(Max_perceptual, 0.8)) %>% 
+  group_by(Mod) %>% 
+  summarize(M = mean(rating),
+            SD = sd(rating)) %>% 
+  arrange(desc(M))
+```
+
+Regression iconicity ratings onto age of acquisition ratings:
+
+```{r, warning = FALSE, message = FALSE}
+lanc_mdl <- brm(rating | weights(w) ~ Aud_z + Gus_z + Hap_z +
+                   Int_z + Olf_z + Vis_z,
+               data = icon,
+               
+               # MCMC settings:
+               cores = 4, init = 0,
+               warmup = 2000, iter = 4000, chains = 4)
+
+# Save:
+
+save(lanc_mdl, file = '../models/lanc_mdl.RData')
+```
+
+Show the model:
+
+```{r}
+summary(lanc_mdl)
+```
+
+Posterior probability of the SER effect being of opposite sign:
+
+```{r}
+posts <- posterior_samples(lanc_mdl)
+sum(posts$b_Aud_z < 0) / nrow(posts)
+sum(posts$b_Gus_z > 0) / nrow(posts)
+sum(posts$b_Olf_z > 0) / nrow(posts)
+sum(posts$b_Vis_z > 0) / nrow(posts)
+sum(posts$b_Hap_z < 0) / nrow(posts)
+sum(posts$b_Int_z < 0) / nrow(posts)
+```
+
+Compute Bayes R-squared:
+
+```{r}
+bayes_R2(lanc_mdl)
+```
+
+
+## Combined analysis
+
+The new "icon" data frame now has additional "_z" variables. Let's put it all into one data frame:
+
+```{r}
+icon_POS <- filter(icon,
+                   !POS_simple %in% c('Unclassified', 'Name'))
+```
+
+Make POS == 'function' the reference level:
+
+```{r}
+icon_POS <- mutate(icon_POS,
+                   POS_simple = factor(POS_simple),
+                   POS_simple = relevel(POS_simple, ref = 'function'))
+```
+
+Get rid of NAs to check how much overlap there is between all of these:
+
+```{r}
+icon_red <- filter(icon_POS,
+                   !is.na(SER_z),
+                   !is.na(AOA_z),
+                   !is.na(LogFreq_z),
+                   !is.na(humor_z),
+                   !is.na(Aud_z))
+```
+
+Check:
+
+```{r}
+nrow(icon_red)
+```
+
+Put it all into one model:
+
+```{r}
+all_mdl <- brm(rating | weights(w) ~ SER_z + AOA_z + LogFreq_z + 
+                 LogCD_z + humor_z + POS_simple +
+                 
+                 # Lancaster predictors:
+                 
+                 Aud_z + Gus_z + Hap_z + Int_z + Olf_z + Vis_z,
+               
+               data = icon_POS,
+               
+               # MCMC settings:
+               control = mcmc_controls,
+               cores = 4, init = 0,
+               warmup = 2000, iter = 4000, chains = 4)
+
+# Save:
+
+save(all_mdl, file = '../models/all_mdl.RData')
+```
+
+Summarize this model:
+
+```{r}
+summary(all_mdl)
+```
+
+

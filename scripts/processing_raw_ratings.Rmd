@@ -1,0 +1,541 @@
+---
+title: "Iconicity Ratings Mega - Quality checks and exclusions"
+author: "Bodo"
+date: "10/03/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading packages and data
+
+Load packages:
+
+```{r, warning = FALSE, message = FALSE}
+library(tidyverse)
+```
+
+Load data. We need to handspecify the column parsing because otherwise a lot of subjects will be put to NA because the first few rows are integer and read_csv() will interpret those rows as integers and set all characters to NA.
+
+```{r, warning = FALSE, message = FALSE}
+df <- read_csv('../ratings/combined_byWord_and_subject_anonymized.csv',
+               col_types = cols(row_id = col_integer(),
+                                subj_code = col_character(),
+                                batch_num = col_integer(),
+                                bin = col_integer(),
+                                word = col_character(),
+                                key = col_double(),
+                                rt = col_double()))
+```
+
+Anonymize create identifiers for each subject. This will be included in the script but it is essentially ineffectful in this case (since only the anonymized data will be shared in the repo). So this code chunk is set to eval = FALSE in the knitted document that will be published.
+
+```{r, eval = FALSE}
+# Table with new ids:
+
+new_ids <- tibble(subj_code = unique(df$subj_code),
+                  sub_ID = 1:length(unique(df$subj_code)))
+
+# Override old IDs:
+
+df <- left_join(df, new_ids) %>%
+  select(-subj_code) %>% 
+  rename(subj_code = sub_ID) %>% 
+  select(row_id, subj_code, batch_num:rt)
+
+# Override file:
+
+write_csv(df,
+          '../ratings/combined_byWord_and_subject_anonymized.csv')
+```
+
+Print for reproducibility:
+
+```{r}
+packageVersion('tidyverse')
+R.Version()$version.string
+```
+
+## Check total data for reporting
+
+Check total number of data points:
+
+```{r}
+nrow(df)
+```
+
+How many have NA for subject code?
+
+```{r}
+filter(df, is.na(subj_code))
+```
+
+None.
+
+Check total number of participants:
+
+```{r}
+df %>% count(subj_code) %>% nrow()
+```
+
+934 participants.
+
+## Check RT distribution
+
+Are there NAs?
+
+```{r}
+filter(df, is.na(rt))
+```
+
+Presumably the script or browser crashed here? Exclude these:
+
+```{r}
+# Exclusion 1... based on rt NA
+
+df <- filter(df,
+             !is.na(rt))
+```
+
+The first two exclusions were based on missing data (probably technical errors) — these are non-substantive exclusions. We won't count them to our baseline to report the % data loss in our paper. So we'll set the new baseline to this N of tokens:
+
+```{r}
+baseline <- nrow(df)
+
+# Show:
+
+baseline
+```
+
+Mean and SD:
+
+```{r}
+df %>% summarize(M = mean(rt),
+                 SD = sd(rt))
+```
+
+Massive standard deviation.
+
+Range:
+
+```{r}
+range(df$rt)
+```
+
+That's crazy high. That maximum number is more than 6 hours. Also that minimum number (6ms) is too low for sure. Nobody can process a word and click that quickly.
+
+Quickly check those responses that are below 100 or below 500:
+
+```{r}
+filter(df, rt < 100) %>% count(subj_code, sort = TRUE)
+filter(df, rt < 500) %>% count(subj_code, sort = TRUE)
+```
+
+There definitely seems to be a few free riders here. For example, subject "69102" has 108 data points below 500 ms. Let's just check whether their data makes any sense:
+
+```{r}
+filter(df, subj_code == '69102') %>% arrange(desc(key))
+filter(df, subj_code == '69102') %>% arrange(key)
+```
+
+Hard to tell, but I could see it making sense.
+
+How many are below 100ms? Below 200ms? 300ms? 500ms?
+
+```{r}
+filter(df, rt < 100) %>% nrow()
+filter(df, rt < 200) %>% nrow()
+filter(df, rt < 300) %>% nrow()
+filter(df, rt < 500) %>% nrow()
+filter(df, rt < 500) %>% nrow() / nrow(df) # proportion
+```
+
+Even 500ms is less than 2.4% of the data. I think this is worth excluding:
+
+```{r}
+# Exclusion 2... based on rt < 500ms
+
+df <- filter(df, rt > 500)
+```
+
+Now let's look at the upper range. How many really high values are there? Let's look at larger than 10s.
+
+```{r}
+filter(df, rt > 10000)
+filter(df, rt > 10000) %>% nrow() / nrow(df) # proportion
+```
+
+That's 3% of the data. I think we can take 10s as a sensible cut-off value without loosing too much data:
+
+```{r}
+# Exclusion 3... based on rt > 10s
+
+df <- filter(df, rt < 10000)
+```
+
+How much exclusion purely based on RT?
+
+```{r}
+baseline - nrow(df)
+(baseline - nrow(df)) / nrow(df)
+```
+
+6% data loss, a total of 3516 data points.
+
+Set N after RT exclusion as baseline for reporting:
+
+```{r}
+new_baseline <- nrow(df)
+```
+
+Check the RT distribution on a by-subject basis:
+
+```{r}
+df_sub <- df %>% group_by(subj_code) %>% 
+  summarize(rt = mean(rt))
+```
+
+Average and SD across subjects:
+
+```{r}
+df_sub %>% summarize(M = mean(rt),
+                     SD = sd(rt))
+```
+
+Range across subjects:
+
+```{r}
+range(df_sub$rt)
+```
+
+Visualize the overall RT distribution:
+
+```{r, fig.width = 8, fig.height = 6}
+df %>% ggplot(aes(x = rt)) +
+  geom_density(fill = 'steelblue', alpha = 0.5) +
+  theme_minimal()
+```
+
+## Exclusion based on straightlining
+
+Let's check whether there are any people who have had the same response for every value.
+
+First, we'll get a count of N per subject:
+
+```{r}
+N_sub <- df %>% count(subj_code) %>% 
+  rename(total = n)
+```
+
+Then the count of subject/key combinations:
+
+```{r}
+N_resp <- df %>% count(subj_code, key, sort = TRUE)
+
+# Check:
+
+N_resp
+```
+
+Subject "70393" for example had 137 times key = 7. That's a bit suspicious. Let's merge this with the per-subject-N to see the proportion of responses that are the same.
+
+```{r}
+N_resp <- left_join(N_resp, N_sub) %>% 
+  mutate(prop = n / total)
+```
+
+Look at the distribution of this:
+
+```{r, fig.width = 8, fig.height = 6}
+N_resp %>% ggplot(aes(x = prop)) +
+  geom_density(fill = 'steelblue', alpha = 0.5) +
+  theme_minimal()
+```
+
+Check whether there is a correlation between response speed and proportion of same-value-responses:
+
+```{r}
+N_resp <- left_join(N_resp, df_sub)
+
+# Correlate:
+
+with(N_resp, cor(prop, rt))
+```
+
+Nothing. But let's plot this just in case:
+
+```{r, fig.width = 8, fig.height = 6}
+N_resp %>% ggplot(aes(x = prop, y = rt)) +
+  geom_point() +
+  theme_minimal()
+```
+
+There is a lot of variation in response speed for people with very mixed proportions (to the left). Not a lot of variation for people with very high proportion though (a striking absence of slow responders here).
+
+If we set 80% as a cut-off value (more than two thirds are the same), this would not be a lot of data loss, and it's clearly the tail end of the distribution.
+
+```{r}
+bad_subs <- filter(N_resp, prop > 0.8) %>%
+  pull(subj_code)
+
+# How many?
+
+length(bad_subs)
+
+# Out of?
+
+length(unique(df$subj_code))
+length(bad_subs) / length(unique(df$subj_code))
+```
+
+Exclude them:
+
+```{r}
+# Exclusion 4... based on prop > 0.80
+
+df <- filter(df, !(subj_code %in% bad_subs))
+
+# How much is that from the RT baseline?
+
+new_baseline - nrow(df)
+1 - (nrow(df) / (new_baseline))
+```
+
+Reset baseline for next comparison:
+
+```{r}
+new_baseline <- nrow(df)
+```
+
+## Exclusion based on correlation with the mean
+
+Following Warriner et al. (2013), we exclude participants who correlated with the item-based average less than 0.1.
+
+First compute averages:
+
+```{r}
+df_avg <- df %>% group_by(word) %>% 
+  summarize(key_M = mean(key, na.rm = TRUE))
+```
+
+Append the means into the main data frame for ease of processing:
+
+```{r}
+df <- left_join(df, df_avg)
+```
+
+For each participant, get the correlation between them and those averages. First, setup a data frame where each row is one participant:
+
+```{r}
+ppt_corrs <- tibble(subj_code = unique(df$subj_code))
+
+# Append columns of NAs to be filled with correlation coefficients:
+
+ppt_corrs$r = numeric(nrow(ppt_corrs))
+```
+
+Then, loop through that and compute the correlations:
+
+```{r}
+for (i in 1:nrow(ppt_corrs)) {
+  # Extract subject into subset:
+  
+  id <- ppt_corrs[i, ]$subj_code
+  this_df <- filter(df, subj_code == id)
+  
+  # Compute and store correlation:
+  
+  ppt_corrs[i, ]$r <- with(this_df,
+                           cor(key, key_M,
+                               use = 'complete.obs'))
+}
+```
+
+Check the distribution:
+
+```{r, fig.width = 8, fig.height = 6}
+ppt_corrs %>% ggplot(aes(x = r)) +
+  geom_density(fill = 'steelblue', alpha = 0.5) +
+  geom_vline(aes(xintercept = 0), linetype = 2) +
+  theme_minimal()
+```
+
+What's the average of the correlations?
+
+```{r}
+ppt_corrs %>% summarize(r_M = mean(r),
+                        r_SD = sd(r))
+```
+
+Sort this in ascending order:
+
+```{r}
+ppt_corrs <- arrange(ppt_corrs, r)
+
+# Show:
+
+ppt_corrs
+```
+
+Get the bad subs:
+
+```{r}
+bad_subs <- filter(ppt_corrs, r < 0.1) %>% pull(subj_code)
+```
+
+How many are these of the total?
+
+```{r}
+length(bad_subs)
+length(unique(df$subj_code))
+length(bad_subs) / length(unique(df$subj_code))
+```
+
+Get rid of those:
+
+```{r}
+# Exclusion 5... based on low correlations with means
+
+df <- filter(df,
+             !(subj_code %in% bad_subs))
+```
+
+How much exclusion?
+
+```{r}
+new_baseline - nrow(df)
+1 - (nrow(df) / new_baseline)
+```
+
+## Exclude based on lacking word knowledge
+
+Check how many NAs there are per word:
+
+```{r}
+NA_count <- df %>%
+  mutate(key_NA = ifelse(is.na(key), 1, 0)) %>% 
+  group_by(word) %>% 
+  summarize(NA_count = sum(key_NA))
+```
+
+Append overall count:
+
+```{r}
+# Compute counts of ratings per word:
+
+word_count <- df %>% count(word)
+
+# Append this overall count to NA count tibble:
+
+NA_count <- left_join(NA_count, word_count)
+```
+
+Compute proportion of N known:
+
+```{r}
+NA_count <- NA_count %>%
+  mutate(prop_known = NA_count / n,
+         prop_known = 1 - prop_known)
+```
+
+Look at the distribution of this:
+
+```{r}
+NA_count %>% summarize(M = mean(prop_known),
+                       min = min(prop_known),
+                       max = max(prop_known))
+```
+
+The average is close to "1" indicating that most words are known.
+
+```{r, fig.width = 8, fig.height = 6}
+NA_count %>% ggplot(aes(x = prop_known)) +
+  geom_density(fill = 'steelblue', alpha = 0.5) +
+  theme_minimal()
+```
+
+How many are known by 80% of all participants?
+
+```{r}
+NA_count %>% filter(prop_known > 0.80) %>% nrow()
+
+# Out of:
+
+nrow(NA_count)
+1 - NA_count %>% filter(prop_known > 0.80) %>% nrow() / nrow(NA_count)
+```
+
+Extract the words that are known by less than 80% of all participants:
+
+```{r}
+bad_words <- NA_count %>% filter(prop_known < 0.80) %>% pull(word)
+```
+
+Exclude those:
+
+```{r}
+# Exclusion 6... based on low word knowledge
+
+df <- filter(df,
+             !(word %in% bad_words))
+```
+
+How much exclusion?
+
+```{r}
+new_baseline - nrow(df)
+1 - (nrow(df) / new_baseline)
+```
+
+Reset baseline:
+
+```{r}
+new_baseline <- nrow(df)
+```
+
+## Compute item-based averages and SDs
+
+Re-compute averages:
+
+```{r}
+icon <- df %>% group_by(word) %>% 
+  summarize(rating = mean(key, na.rm = TRUE),
+            rating_sd = sd(key, na.rm = TRUE))
+```
+
+Append known / not known data:
+
+```{r}
+icon <- left_join(icon, NA_count)
+```
+
+Rename and re-order:
+
+```{r}
+icon <- icon %>% 
+  mutate(n_ratings = n - NA_count) %>% 
+  select(word, n_ratings, n, prop_known, rating, rating_sd)
+```
+
+What is the average number of ratings per word?
+
+```{r}
+icon %>% summarize(n = mean(n_ratings),
+                   min = min(n_ratings),
+                   max = max(n_ratings))
+```
+
+What's with those low ones? They were all known, but why do we have so few data points for these?
+
+```{r}
+arrange(icon, n_ratings)
+```
+
+Save the data:
+
+```{r}
+write_csv(icon, '../ratings/iconicity_ratings.csv')
+```
+
