@@ -11,9 +11,9 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Introduction
 
-This markdown performs a number of different analysis that serve to demonstrate how the iconicity ratings correlate with other psycholinguistic norms that have been collected. This analysis serves multiple purposes. It serves to replicate the results of studies that have been collected with a much smaller norm dataset. And it demonstrates the construct validity of the norms by demonstrating that the ratings pattern with other variables in a way we expect from iconicity.
+This markdown performs a number of different analysis that serve to demonstrate how the iconicity ratings correlate with other psycholinguistic norms that have been collected. In addition, we produce some plots of the data to give an overview of the ratings.
 
-In addition, we produce some plots 
+The models are computed in the file "Bayesian_models.Rmd" and will be loaded in and interpreted here.
 
 ## Data and package loading
 
@@ -23,6 +23,7 @@ Load packages:
 library(brms)
 library(tidyverse)
 library(patchwork)
+library(ggwordcloud)
 ```
 
 For reproducibility:
@@ -30,6 +31,8 @@ For reproducibility:
 ```{r}
 packageVersion('brms')
 packageVersion('tidyverse')
+packageVersion('patchwork')
+packageVersion('ggwordcloud')
 R.Version()$version.string
 ```
 
@@ -42,11 +45,24 @@ icon <- read_csv('../ratings/iconicity_ratings.csv')
 Load additional datasets:
 
 ```{r, warning = FALSE, message = FALSE}
+# Data for replications:
+
 SER <- read_csv('../additional_data/juhasz_yap_2013_SER.csv')
 AOA <- read_csv('../additional_data/kuperman_2012_AOA.csv')
 lanc <- read_csv('../additional_data/lancaster_sensorimotor_norms_2019.csv')
 SUBTL <- read_csv('../additional_data/brysbaert_2012_SUBTLEX_POS.csv')
 humor <- read_csv('../additional_data/engelthaler_hills_2018_humor.csv')
+ding <- read_csv('../additional_data/dingemanse_thompson_2020.csv')
+
+# Data for controlling morphology:
+
+ELP <- read_csv('../additional_data/balota_2007_ELP.csv')
+
+# Data for new analyses:
+
+amsel <- read_csv('../additional_data/amsel_2012_SER.csv')
+wisc <- read_csv('../additional_data/wisconsin_2005_norms.csv')
+levin <- read_csv('../additional_data/levin_1991_verb_classes.csv')
 ```
 
 Rename folders and simplify data frames to include only relevant info. Also make Lancaster norm Word column lowercase. Log10 transform SUBTLEX frequencies and contextual diversity:
@@ -88,9 +104,193 @@ SUBTL <- SUBTL %>%
   
 humor <- select(humor, word, mean) %>%
   rename(humor = mean)
+
+# Dingemanse & Thompson (2020) data:
+
+ding <- select(ding, logletterfreq, word, ico, ico_imputed, ico_imputed_monomorph)
+
+# Amsel (2012) and Wisconsin (2005) data:
+
+amsel <- select(amsel, Concept, Smell, Color, Taste, Sound, Motion) %>% 
+  rename(amsel_smell = Smell, amsel_color = Color,
+         amsel_taste = Taste, amsel_sound = Sound,
+         amsel_motion = Motion)
+wisc <- select(wisc, Word, SoundMean, ColorMean, MotionMean) %>%
+  rename(wisc_sound = SoundMean, wisc_color = ColorMean, wisc_motion = MotionMean)
+
+
+# ELP data:
+
+ELP <- select(ELP, Word, NMorph) %>% 
+  mutate(LogMorph = log10(NMorph),
+         Word = str_to_lower(Word))
 ```
 
+Join them into the main iconicity data file:
+
+```{r}
+icon <- left_join(icon, SER, by = c('word' = 'Word'))
+icon <- left_join(icon, AOA, by = c('word' = 'Word'))
+icon <- left_join(icon, SUBTL, by = c('word' = 'Word'))
+icon <- left_join(icon, humor, by = c('word' = 'word'))
+icon <- left_join(icon, lanc, by = c('word' = 'Word'))
+icon <- left_join(icon, ding, by = c('word' = 'word'))
+icon <- left_join(icon, wisc, by = c('word' = 'Word'))
+icon <- left_join(icon, amsel, by = c('word' = 'Concept'))
+icon <- left_join(icon, ELP, by = c('word' = 'Word'))
+```
+
+For SUBTLEX, an NA is a true zero:
+
+```{r}
+icon <- mutate(icon,
+               Freq = ifelse(is.na(Freq), 0, Freq),
+               CD = ifelse(is.na(CD), 0, CD))
+```
+
+Log-transform the frequencies:
+
+```{r}
+icon <- mutate(icon,
+               LogFreq = log10(Freq + 1),
+               LogCD = log10(CD + 1))
+```
+
+Z-score all variables:
+
+```{r}
+z_score <- function(x) (x - mean(x, na.rm = TRUE)) / sd(x)
+
+icon <- mutate(icon,
+               SER_z = z_score(SER),
+               AOA_z = z_score(AOA),
+               LogFreq_z = z_score(LogFreq),
+               LogCD_z = z_score(LogCD),
+               humor_z = z_score(humor),
+               logletter_z = z_score(logletterfreq),
+               lognmorph_z = z_score(LogMorph),
+               
+               amsel_color_z = z_score(amsel_color),
+               amsel_smell_z = z_score(amsel_smell),
+               amsel_taste_z = z_score(amsel_taste),
+               amsel_sound_z = z_score(amsel_sound),
+               amsel_motion_z = z_score(amsel_motion),
+               
+               wisc_sound_z = z_score(wisc_sound),
+               wisc_color_z = z_score(wisc_color),
+               wisc_motion_z = z_score(wisc_motion),
+               
+               # Lancaster norms:
+               Aud_z = z_score(Aud),
+               Gus_z = z_score(Gus),
+               Hap_z = z_score(Hap),
+               Int_z = z_score(Int),
+               Olf_z = z_score(Olf),
+               Vis_z = z_score(Vis))
+```
+
+## Process part of speech tags
+
+Process the part-of-speech information to collapse categories for better representation. First show what categories there are:
+
+```{r}
+sort(table(icon$POS))
+```
+
+Define vector of stuff to set as function words. "Ex" = there. "#N/A" are words like "gonna", "wanna". 
+
+```{r}
+gram <- c('#N/A', 'Article', 'Conjunction',
+          'Determiner', 'Not', 'Number',
+          'Preposition', 'Pronoun', 'To',
+          'Ex')
+```
+
+Set this to function words in a new POS variable:
+
+```{r}
+icon <- mutate(icon,
+               POS_simple = ifelse(POS %in% gram, 'Function', POS))
+```
+
+Check categories:
+
+```{r}
+table(icon$POS_simple)
+```
+
+Get a reduced POS data frame without names and unclassifieds. This will be used later to making computing averages easier.
+
+```{r}
+icon_POS <- filter(icon,
+                   !POS_simple %in% c('Unclassified', 'Name'))
+```
+
+Check:
+
+```{r}
+table(icon_POS$POS_simple)
+```
+
+## Create a word cloud
+
+Create a word cloud. First, extract the first 100 most iconic words:
+
+```{r}
+cloud_df <- icon %>% arrange(desc(rating)) %>% 
+  slice_head(n = 100)
+```
+
+
+```{r, fig.width = 14, fig.height = 15, warning = FALSE, message = FALSE}
+set.seed(666)
+
+cloud_p <- cloud_df %>% 
+  ggplot(aes(label = word,
+             size = rating,
+             color = rating)) +
+  geom_text_wordcloud_area(eccentricity = 0.9) +
+  scale_size_area(max_size = 12) +
+  scale_color_gradient(low = '#5382b0', high = '#c79b3c' ) +
+  theme_minimal()
+
+# Show:
+
+cloud_p
+ggsave(plot = cloud_p, filename = '../figures/wordcloud.pdf',
+       width = 11, height = 7)
+```
+
+## Correlate with  old ratings and imputed ratings
+
+Check against imputed ratings from the Dingemanse & Thompson (2020) file:
+
+```{r}
+with(icon, cor(rating, ico_imputed, use = 'complete.obs'))
+with(icon, cor(rating, ico_imputed_monomorph, use = 'complete.obs'))
+```
+
+Check against old ratings from Dingemanse & Thompson (2020) file - careful, this is a subset:
+
+```{r}
+with(icon, cor(rating, ico, use = 'complete.obs'))
+```
+
+
+
 ## Check the distribution for reporting
+
+For reporting, 10 most iconic words:
+
+```{r}
+arrange(icon, desc(rating))
+```
+
+And 10 least iconic words:
+
+```{r}
+arrange(icon, rating)
+```
 
 First, mean and SD:
 
@@ -100,7 +300,7 @@ icon %>% summarize(M = mean(rating),
                    SD = round(SD, 2))
 ```
 
-Make a double plot with the distribution and a Pollock (2018) style plot with mean against SD. First, the iconicity plot:
+First, the iconicity distribution plot:
 
 ```{r, fig.width = 8, fig.height = 6}
 # Main plot with mappings:
@@ -207,43 +407,6 @@ ggsave(plot = qq_p,
        width = 8, height = 6)
 ```
 
-Create a double plot of this (with titles):
-
-```{r, fig.width = 12, fig.height = 6}
-# Add titles:
-
-icon_p <- icon_p +
-  ggtitle('(a) Iconicity rating distribution') +
-  theme(title = element_text(face = 'bold',
-                             size = 18,
-                             margin = margin(t = 0, b = 15,
-                                             r = 0, l = 0)))
-
-qq_p <- qq_p +
-  ggtitle('(b) Q-Q plot of iconicity ratings') +
-  theme(title = element_text(face = 'bold',
-                             size = 18,
-                             margin = margin(t = 0, b = 15,
-                                             r = 0, l = 0)))
-
-# Put into plot together:
-
-figure_1 <- icon_p + plot_spacer() + qq_p +
-  plot_layout(widths = c(8, 1, 8))
-
-
-# Show in script:
-
-figure_1
-
-# Save:
-
-ggsave(plot = figure_1,
-       filename = '../figures/figure1.pdf',
-       width = 12, height = 5)
-```
-
-
 Create the Pollock (2018) style plot:
 
 ```{r, fig.width = 8, fig.height = 6}
@@ -287,266 +450,55 @@ ggsave(plot = pollock_p,
        width = 8, height = 6)
 ```
 
-For reporting, 10 most iconic words:
+Create a double plot of normal distribution with Pollock (2018) graph:
 
-```{r}
-arrange(icon, desc(rating))
+```{r, fig.width = 12, fig.height = 6}
+# Add titles:
+
+icon_p <- icon_p +
+  ggtitle('(a) Iconicity rating distribution') +
+  theme(title = element_text(face = 'bold',
+                             size = 18,
+                             margin = margin(t = 0, b = 15,
+                                             r = 0, l = 0)))
+
+pollock_p <- pollock_p +
+  ggtitle('(b) Standard deviation by mean') +
+  theme(title = element_text(face = 'bold',
+                             size = 18,
+                             margin = margin(t = 0, b = 15,
+                                             r = 0, l = 0)))
+
+# Put into plot together:
+
+figure_1 <- icon_p + plot_spacer() + pollock_p +
+  plot_layout(widths = c(8, 1, 8))
+
+
+# Show in script:
+
+figure_1
+
+# Save:
+
+ggsave(plot = figure_1,
+       filename = '../figures/figure1.pdf',
+       width = 12, height = 5)
 ```
 
-And 10 least iconic words:
-
-```{r}
-arrange(icon, rating)
-```
-
-## Bayesian regression settings for all analyses
-
-These settings will be carried through. First, options for parallel processing to use all cores from the respective computer:
-
-```{r}
-options(mc.cores=parallel::detectCores())
-```
-
-Weakly informative priors on slope coefficient:
-
-```{r}
-priors <- c(prior(normal(0, 1), class = b))
-```
-
-For MCMC settings (will be used only for models that find it hard to converge):
-
-```{r}
-mcmc_controls <- list(adapt_delta = 0.999,
-                      max_treedepth = 13)
-```
-
-We will convert the SDs to the range 0 to 1. I used this as a guide:
-
-https://stackoverflow.com/questions/929103/convert-a-number-range-to-another-range-maintaining-ratio
-
-```{r}
-# mins and maxes:
-
-sd_min <- min(icon$rating_sd)
-sd_max <- max(icon$rating_sd)
-
-# convert:
-
-icon <- mutate(icon,
-               w = (rating_sd - sd_min) / (sd_max - sd_min),
-               
-               # to invert (so that max SD = lowest weight):
-               w = w * -1 + 1,
-               
-               # renormalize these weights to have mean 1:
-               
-               w = w / mean(w))
-
-# check:
-
-mean(icon$w)
-arrange(icon, desc(w))
-arrange(icon, w)
-```
-
-## Analysis 1: Analysis of sensory experience ratings
-
-Combine data with SER:
-
-```{r}
-icon <- left_join(icon, SER, by = c('word' = 'Word'))
-```
-
-Z-score the SER variable:
-
-```{r}
-icon <- mutate(icon,
-               SER_z = SER - mean(SER, na.rm = TRUE),
-               SER_z = SER_z / sd(SER_z, na.rm = TRUE))
-```
+## Check overlap with different datasets for reporting
 
 How many data points?
 
 ```{r}
 filter(icon, !is.na(SER)) %>% nrow()
-```
-
-Regression iconicity ratings onto sensory experience ratings:
-
-```{r, warning = FALSE, message = FALSE}
-SER_mdl <- brm(rating | weights(w) ~ SER_z,
-               data = icon,
-               
-               # MCMC settings:
-               seed = 666,
-               cores = 4, init = 0,
-               warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(SER_mdl, file = '../models/SER_mdl.RData')
-```
-
-Show the model:
-
-```{r}
-summary(SER_mdl)
-```
-
-Posterior probability of the SER effect being of opposite sign:
-
-```{r}
-posts <- posterior_samples(SER_mdl)
-sum(posts$b_SER_z < 0) / nrow(posts)
-```
-
-Compute Bayes R-squared:
-
-```{r}
-bayes_R2(SER_mdl)
-```
-
-## Analysis 2: Analysis of AOA
-
-Combine data with AOA:
-
-```{r}
-icon <- left_join(icon, AOA, by = c('word' = 'Word'))
-```
-
-Z-score the AOA variable:
-
-```{r}
-icon <- mutate(icon,
-               AOA_z = AOA - mean(AOA, na.rm = TRUE),
-               AOA_z = AOA_z / sd(AOA_z, na.rm = TRUE))
-```
-
-How many data points?
-
-```{r}
 filter(icon, !is.na(AOA)) %>% nrow()
-```
-
-Regression iconicity ratings onto age of acquisition ratings:
-
-```{r, warning = FALSE, message = FALSE}
-AOA_mdl <- brm(rating | weights(w) ~ AOA_z,
-               data = icon,
-               
-               # MCMC settings:
-               seed = 666,
-               cores = 4, init = 0,
-               warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(AOA_mdl, file = '../models/AOA_mdl.RData')
-```
-
-Show the model:
-
-```{r}
-summary(AOA_mdl)
-```
-
-Posterior probability of the SER effect being of opposite sign:
-
-```{r}
-posts <- posterior_samples(AOA_mdl)
-sum(posts$b_AOA_z > 0) / nrow(posts)
-```
-
-Compute Bayes R-squared:
-
-```{r}
-bayes_R2(AOA_mdl)
-```
-
-## Analysis 3: SUBTLEX: Frequency, CD, and Part-of-speech tags
-
-Combine data with SUBTL:
-
-```{r}
-icon <- left_join(icon, SUBTL, by = c('word' = 'Word'))
-```
-
-How many data points?
-
-```{r}
-filter(icon, !is.na(Freq)) %>% nrow()
-```
-
-Here, an NA is a true zero:
-
-```{r}
-icon <- mutate(icon,
-               Freq = ifelse(is.na(Freq), 0, Freq),
-               CD = ifelse(is.na(CD), 0, CD))
-```
-
-Log-transform that:
-
-```{r}
-icon <- mutate(icon,
-               LogFreq = log10(Freq + 1),
-               LogCD = log10(CD + 1))
-```
-
-Z-score the LogFreq and LogCD variables:
-
-```{r}
-icon <- mutate(icon,
-               # Log frequency:
-               LogFreq_z = LogFreq - mean(LogFreq, na.rm = TRUE),
-               LogFreq_z = LogFreq_z / sd(LogFreq_z, na.rm = TRUE),
-               
-               # Log CD:
-               LogCD_z = LogCD - mean(LogCD, na.rm = TRUE),
-               LogCD_z = LogCD_z / sd(LogCD_z, na.rm = TRUE))
+filter(icon, !is.na(humor)) %>% nrow()
+filter(icon, !is.na(Aud_z)) %>% nrow()
 ```
 
 
-Process the part-of-speech information to collapse categories for better representation. First show what categories there are:
-
-```{r}
-sort(table(icon$POS))
-```
-
-Define vector of stuff to set as function words. "Ex" = there. "#N/A" are words like "gonna", "wanna". 
-
-```{r}
-gram <- c('#N/A', 'Article', 'Conjunction',
-          'Determiner', 'Not', 'Number',
-          'Preposition', 'Pronoun', 'To',
-          'Ex')
-```
-
-Set this to function words in a new POS variable:
-
-```{r}
-icon <- mutate(icon,
-               POS_simple = ifelse(POS %in% gram, 'function', POS))
-```
-
-Check categories:
-
-```{r}
-table(icon$POS_simple)
-```
-
-Get a reduced POS data frame without names and unclassifieds:
-
-```{r}
-icon_POS <- filter(icon,
-                   !POS_simple %in% c('Unclassified', 'Name'))
-```
-
-Check:
-
-```{r}
-table(icon_POS$POS_simple)
-```
+## Descriptive statistics
 
 Average iconicity for these:
 
@@ -555,212 +507,6 @@ icon_POS %>% group_by(POS_simple) %>%
   summarize(M = mean(rating),
             SD = sd(rating)) %>% 
   arrange(desc(M))
-```
-
-Make function the reference level:
-
-```{r}
-icon_POS <- mutate(icon_POS,
-                   POS_simple = factor(POS_simple),
-                   POS_simple = relevel(POS_simple, ref = 'function'))
-```
-
-Regression iconicity ratings onto frequency, CD controlling for freq, and POS:
-
-```{r, warning = FALSE, message = FALSE}
-# Frequency model:
-
-freq_mdl <- brm(rating | weights(w) ~ LogFreq_z,
-                data = icon,
-               
-                # MCMC settings:
-                seed = 666,
-                cores = 4, init = 0,
-                warmup = 2000, iter = 4000, chains = 4)
-
-# Contextual diversity model:
-
-freq_CD_mdl <- brm(rating | weights(w) ~ LogFreq_z + LogCD_z,
-                data = icon,
-               
-                # MCMC settings:
-                seed = 666,
-                cores = 4, init = 0,
-                warmup = 2000, iter = 4000, chains = 4)
-
-# POS model:
-
-POS_mdl <- brm(rating | weights(w) ~ POS_simple,
-               data = icon_POS,
-
-                # MCMC settings:
-               seed = 666,
-               control = mcmc_controls,
-               cores = 4, init = 0,
-               warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(freq_mdl, file = '../models/freq_mdl.RData')
-save(freq_CD_mdl, file = '../models/freq_CD_mdl.RData')
-save(POS_mdl, file = '../models/POS_mdl.RData')
-```
-
-Show the models:
-
-```{r}
-summary(freq_mdl)
-summary(freq_CD_mdl)
-summary(POS_mdl)
-```
-
-Posterior probability of the SER effect being of opposite sign:
-
-```{r}
-# Extract posteriors:
-
-freq_posts <- posterior_samples(freq_mdl)
-CD_posts <- posterior_samples(freq_CD_mdl)
-
-# Compute posterior probabilities:
-
-sum(freq_posts$b_freq_z > 0) / nrow(freq_posts)
-sum(CD_posts$b_CD_z > 0) / nrow(CD_posts)
-```
-
-Compute Bayes R-squared:
-
-```{r}
-bayes_R2(freq_mdl)
-bayes_R2(freq_CD_mdl)
-bayes_R2(POS_mdl)
-```
-
-For the POS model it makes sense to do an omnibus "test" of part-of-speech since it is a predictor with multiple levels. We can do that with LOO-CV. For this we need to build the corresponding null model:
-
-```{r}
-POS_null <- brm(rating | weights(w) ~ 1,
-                data = icon_POS,
-
-                # MCMC settings:
-                seed = 666,
-                cores = 4, init = 0,
-                warmup = 2000, iter = 4000, chains = 4)
-```
-
-Then get the LOOs:
-
-```{r}
-set.seed(666)
-
-# Perform LOO on each model:
-
-POS_loo <- loo(POS_mdl, reloo = TRUE)
-POS_null_loo <- loo(POS_null, reloo = TRUE)
-
-# Compare LOO:
-
-both_loo <- loo_compare(POS_loo, POS_null)
-```
-
-Show:
-
-```{r}
-both_loo
-```
-
-## Analysis 4: Humor ratings
-
-Combine data with humor ratings:
-
-```{r}
-icon <- left_join(icon, humor, by = c('word' = 'word'))
-```
-
-Z-score the humor variable:
-
-```{r}
-icon <- mutate(icon,
-               humor_z = humor - mean(humor, na.rm = TRUE),
-               humor_z = humor_z / sd(humor_z, na.rm = TRUE))
-```
-
-How many data points?
-
-```{r}
-filter(icon, !is.na(humor)) %>% nrow()
-```
-
-Regression iconicity ratings onto age of acquisition ratings:
-
-```{r, warning = FALSE, message = FALSE}
-humor_mdl <- brm(rating | weights(w) ~ humor_z,
-               data = icon,
-               
-               # MCMC settings:
-               seed = 666,
-               cores = 4, init = 0,
-               warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(humor_mdl, file = '../models/humor_mdl.RData')
-```
-
-Show the model:
-
-```{r}
-summary(humor_mdl)
-```
-
-Posterior probability of the SER effect being of opposite sign:
-
-```{r}
-posts <- posterior_samples(humor_mdl)
-sum(posts$b_humor_z < 0) / nrow(posts)
-```
-
-Compute Bayes R-squared:
-
-```{r}
-bayes_R2(humor_mdl)
-```
-
-## Analysis 5: Lancaster sensorimotor ratings
-
-Merge with lanc:
-
-```{r}
-icon <- left_join(icon, lanc, by = c('word' = 'Word'))
-```
-
-Z-score all predictors:
-
-```{r}
-icon <- mutate(icon,
-               Aud_z = Aud - mean(Aud, na.rm = TRUE),
-               Aud_z = Aud_z / sd(Aud_z, na.rm = TRUE),
-               
-               Gus_z = Gus - mean(Gus, na.rm = TRUE),
-               Gus_z = Gus_z / sd(Gus_z, na.rm = TRUE),
-               
-               Hap_z = Hap - mean(Hap, na.rm = TRUE),
-               Hap_z = Hap_z / sd(Hap_z, na.rm = TRUE),
-               
-               Int_z = Int - mean(Int, na.rm = TRUE),
-               Int_z = Int_z / sd(Int_z, na.rm = TRUE),
-               
-               Olf_z = Olf - mean(Olf, na.rm = TRUE),
-               Olf_z = Olf_z / sd(Olf_z, na.rm = TRUE),
-               
-               Vis_z = Vis - mean(Vis, na.rm = TRUE),
-               Vis_z = Vis_z / sd(Vis_z, na.rm = TRUE))
-```
-
-How many data points?
-
-```{r}
-filter(icon, !is.na(Aud_z)) %>% nrow()
 ```
 
 Check the dominant perceptual modality:
@@ -772,121 +518,589 @@ icon %>% group_by(Mod) %>%
   arrange(desc(M))
 ```
 
-Check the dominant perceptual modality only for very perceptual words:
+Check the dominant perceptual modality only for very perceptual words. First, get a subset:
 
 ```{r}
-icon %>% 
-  filter(!is.na(Max_perceptual)) %>% 
-  filter(Max_perceptual > quantile(Max_perceptual, 0.8)) %>% 
+sense <- icon %>% filter(!is.na(Max_perceptual)) %>% 
+  filter(Max_perceptual > quantile(Max_perceptual, 0.8))
+
+# How many?
+
+nrow(sense)
+```
+
+Then re-do the averages:
+
+```{r}
+sense %>% 
   group_by(Mod) %>% 
   summarize(M = mean(rating),
             SD = sd(rating)) %>% 
   arrange(desc(M))
 ```
 
-Regression iconicity ratings onto age of acquisition ratings:
-
-```{r, warning = FALSE, message = FALSE}
-lanc_mdl <- brm(rating | weights(w) ~ Aud_z + Gus_z + Hap_z +
-                   Int_z + Olf_z + Vis_z,
-               data = icon,
-               
-               # MCMC settings:
-               seed = 666,
-               cores = 4, init = 0,
-               warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(lanc_mdl, file = '../models/lanc_mdl.RData')
-```
-
-Show the model:
+Check Levin verb classes:
 
 ```{r}
-summary(lanc_mdl)
+levin <- left_join(levin, icon, by = c('verb' = 'word'))
+
+# Get counts:
+
+levin_counts <- levin %>% count(category)
+
+# Averages:
+
+levin_avg <- levin %>% group_by(category) %>% 
+  summarize(M = mean(rating, na.rm = TRUE),
+            SD = sd(rating, na.rm = TRUE)) %>% 
+  arrange(desc(M))
+
+# Put counts in there:
+
+levin_avg <- left_join(levin_avg, levin_counts)
+
+# Show:
+
+levin_avg
 ```
 
-Posterior probability of the SER effect being of opposite sign:
+For comparison, the least iconic classes:
 
 ```{r}
-posts <- posterior_samples(lanc_mdl)
-sum(posts$b_Aud_z < 0) / nrow(posts)
-sum(posts$b_Gus_z > 0) / nrow(posts)
-sum(posts$b_Olf_z > 0) / nrow(posts)
-sum(posts$b_Vis_z > 0) / nrow(posts)
-sum(posts$b_Hap_z < 0) / nrow(posts)
-sum(posts$b_Int_z < 0) / nrow(posts)
+arrange(levin_avg, M)
 ```
 
-Compute Bayes R-squared:
+## Correlation table
+
+Get the variables of interest:
 
 ```{r}
+these_vars <- c("rating", "SER", "AOA", "LogFreq", "LogCD", "logletterfreq", "humor", "NMorph")
+```
+
+Get these vars and perform pairwise correlations:
+
+```{r}
+# Get subset:
+
+df_vars <- icon[, these_vars]
+
+# Correlate and round:
+
+all_corrs <- round(cor(df_vars, use = 'complete.obs'), 2)
+
+# Print and save:
+
+all_corrs
+write_csv(as.data.frame(all_corrs), '../tables/all_correlations.csv')
+```
+
+Perform them again with subset of monomorphemics:
+
+```{r}
+# Get subset:
+
+mono <- icon %>% filter(NMorph == 1)
+mono <- mono[, these_vars]
+mono <- mono[, -ncol(mono)]
+
+# Correlate and round:
+
+mono_corrs <- round(cor(df_vars, use = 'complete.obs'), 2)
+
+# Print:
+
+mono_corrs
+```
+
+
+## Interpret models
+
+Load all models from the models folder:
+
+```{r}
+all_models <- list.files('../models/')
+
+for (i in seq_along(all_models)) {
+  load(str_c('../models/', all_models[i]))
+}
+```
+
+First, let's look at all r-squareds:
+
+```{r}
+# Morphology control variables:
+
+bayes_R2(morph_mdl)
+bayes_R2(logmorph_mdl)
+
+# Sensory experience and modality:@
+
+bayes_R2(SER_mdl)
 bayes_R2(lanc_mdl)
+bayes_R2(lanc_80_mdl)
+bayes_R2(lanc_max_mdl)
+
+# Age of acquisition:
+
+bayes_R2(AOA_mdl)
+
+# Dingemanse & Thompson (2020):
+
+bayes_R2(humor_mdl)
+bayes_R2(logletter_mdl)
+
+# Frequency and contextual diversity:
+
+bayes_R2(freq_mdl)
+bayes_R2(freq_CD_mdl)
+
+# Part-of-speech:
+
+bayes_R2(POS_mdl)
+
+# FUll model:
+
+bayes_R2(all_mdl)
+bayes_R2(all_mdl_no_POS)
+```
+
+Next, let's look at the model summaries:
+
+```{r}
+# Morphology control variables:
+
+summary(morph_mdl)
+summary(logmorph_mdl)
+
+# Sensory experience and modality:@
+
+summary(SER_mdl)
+summary(lanc_mdl)
+summary(lanc_80_mdl)
+summary(lanc_max_mdl)
+
+# Age of acquisition:
+
+summary(AOA_mdl)
+
+# Dingemanse & Thompson (2020):
+
+summary(humor_mdl)
+summary(logletter_mdl)
+
+# Frequency and contextual diversity:
+
+summary(freq_mdl)
+summary(freq_CD_mdl)
+
+# Part-of-speech:
+
+summary(POS_mdl)
+
+# FUll model:
+
+summary(all_mdl)
+summary(all_mdl_no_POS)
+```
+
+## Inference for categorical variables
+
+Part of speech (WAIC here):
+
+```{r}
+WAIC(POS_mdl)
+WAIC(POS_null)
+```
+
+Part of speech from main model:
+
+```{r}
+WAIC(all_mdl)
+WAIC(all_mdl_no_POS)
+```
+
+Levin (WAIC here):
+
+```{r}
+WAIC(levin_mdl)
+WAIC(levin_null_mdl)
 ```
 
 
-## Combined analysis
 
-The new "icon" data frame now has additional "_z" variables. Let's put it all into one data frame:
+## Make a coefficient plot of the main model
+
+Get the fixed effects:
 
 ```{r}
-icon_POS <- filter(icon,
-                   !POS_simple %in% c('Unclassified', 'Name'))
+these_rows <- row.names(fixef(all_mdl_no_POS))
+fixefs <- as_tibble(fixef(all_mdl_no_POS))
+fixefs$variable <- these_rows
+
+# Get rid of intercept:
+
+fixefs <- fixefs[-1, ]
+
+# Rename the variables:
+
+fixefs <- mutate(fixefs,
+                 variable = str_remove(variable, '_z'),
+                 variable = ifelse(variable == 'humor', 'humor ratings', variable),
+                 variable = ifelse(variable == 'LogFreq', 'log frequency', variable),
+                 variable = ifelse(variable == 'LogCD', 'log contextual diversity', variable),
+                 variable = ifelse(variable == 'SER', 'sensory experience ratings', variable),
+                 variable = ifelse(variable == 'AOA', 'age-of-acquisition ratings', variable),
+                 variable = ifelse(variable == 'ARC', 'ARC (semantic neighborhood density)', variable),
+                 variable = ifelse(variable == 'NMorph', 'number of morphemes', variable),
+                 variable = ifelse(variable == 'logletter', 'log letter frequency', variable))
+
+# Show tibble:
+
+fixefs
 ```
 
-Make POS == 'function' the reference level:
+Make a subset without freq / CD:
 
 ```{r}
-icon_POS <- mutate(icon_POS,
-                   POS_simple = factor(POS_simple),
-                   POS_simple = relevel(POS_simple, ref = 'function'))
+fixefs <- fixefs %>%
+  filter(!variable %in% c('log frequency', 'log contextual diversity'))
 ```
 
-Get rid of NAs to check how much overlap there is between all of these:
 
-```{r}
-icon_red <- filter(icon_POS,
-                   !is.na(SER_z),
-                   !is.na(AOA_z),
-                   !is.na(LogFreq_z),
-                   !is.na(humor_z),
-                   !is.na(Aud_z))
-```
+Make a coefficient plot of this:
 
-Check:
+```{r, fig.width = 5, fig.height = 8}
+# Setup the plot:
 
-```{r}
-nrow(icon_red)
-```
+coef_p <- fixefs %>%
+  ggplot(aes(x = reorder(variable, Estimate), y = Estimate,
+             ymin = Q2.5, ymax = Q97.5))
 
-Put it all into one model:
+# Add geoms:
 
-```{r}
-all_mdl <- brm(rating | weights(w) ~ SER_z + AOA_z + LogFreq_z + 
-                 LogCD_z + humor_z + POS_simple +
-                 
-                 # Lancaster predictors:
-                 
-                 Aud_z + Gus_z + Hap_z + Int_z + Olf_z + Vis_z,
-               
-               data = icon_POS,
-               
-               # MCMC settings:
-               seed = 666,
-               control = mcmc_controls,
-               cores = 4, init = 0,
-               warmup = 2000, iter = 4000, chains = 4)
+coef_p <- coef_p + 
+  geom_point(shape = 15) +
+  geom_hline(aes(yintercept = 0), linetype = 2) + 
+  geom_errorbar(width = 0.1)
+
+# Add cosmetics:
+
+coef_p <- coef_p +
+  ylab('Standardized coefficient') +
+  coord_flip() +
+  theme_minimal() +
+  theme(axis.title.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 15, b = 0,
+                                                    r = 0, l = 0),
+                                    face = 'bold',
+                                    size = 16),
+        axis.text.y = element_text(face = 'bold', size = 14))
+
+# Show plot:
+
+coef_p
 
 # Save:
 
-save(all_mdl, file = '../models/all_mdl.RData')
+ggsave(plot = coef_p, filename = '../figures/main_coefficients.pdf',
+       width = 9, height = 6)
 ```
 
-Summarize this model:
+Create the predictions for POS categories:
 
 ```{r}
-summary(all_mdl)
+# Extract posteriors
+
+POS_posts <- posterior_samples(POS_mdl)
+
+# Add posterior samples of the respective coefficients
+
+functions <- POS_posts$b_Intercept
+adjs <- POS_posts$b_Intercept + POS_posts$b_POS_simpleAdjective
+advbs <- POS_posts$b_Intercept + POS_posts$b_POS_simpleAdverb
+interj <- POS_posts$b_Intercept + POS_posts$b_POS_simpleInterjection
+nouns <- POS_posts$b_Intercept + POS_posts$b_POS_simpleNoun
+verbs <- POS_posts$b_Intercept + POS_posts$b_POS_simpleVerb
+
+# Create tibble:
+
+preds <- tibble(POS = c('Function',
+                        'Adverb',
+                        'Noun',
+                        'Adjective',
+                        'Verb',
+                        'Interjection'),
+                Estimate = c(mean(functions),
+                             mean(advbs),
+                             mean(nouns),
+                             mean(adjs),
+                             mean(verbs),
+                             mean(interj)),
+                Q2.5 = c(quantile(functions, 0.025),
+                         quantile(advbs, 0.025),
+                         quantile(nouns, 0.025),
+                         quantile(adjs, 0.025),
+                         quantile(verbs, 0.025),
+                         quantile(interj, 0.025)),
+                Q97.5 = c(quantile(functions, 0.975),
+                          quantile(advbs, 0.975),
+                          quantile(nouns, 0.975),
+                          quantile(adjs, 0.975),
+                          quantile(verbs, 0.975),
+                          quantile(interj, 0.975)))
+
+# Show:
+
+preds
 ```
+
+Make a prediction plot of this:
+
+```{r, fig.width = 5, fig.height = 8}
+# Setup the plot:
+
+POS_p <- preds %>%
+  ggplot(aes(x = reorder(POS, Estimate), y = Estimate,
+             ymin = Q2.5, ymax = Q97.5))
+
+# Add geoms:
+
+POS_p <- POS_p + 
+  geom_point(shape = 15, size = 2) +
+  geom_errorbar(width = 0.1)
+
+# Add cosmetics:
+
+POS_p <- POS_p +
+  ylab('Estimated iconicity') +
+  theme_minimal() +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text(face = 'bold',
+                                   size = 12, angle = 45, hjust = 1),
+        axis.title.y = element_text(margin = margin(t = 0, b = 0,
+                                                    r = 15, l = 0),
+                                    face = 'bold', size = 16))
+
+# Show plot:
+
+POS_p
+
+# Save:
+
+ggsave(plot = POS_p, filename = '../figures/POS_preds.pdf',
+       width = 7, height = 7)
+```
+
+Make a coefficient plot of the sensory modality effects. First, get the coefficients:
+
+```{r}
+# Get coefficients:
+
+lancs <- as_tibble(fixef(lanc_mdl)[-1, ]) # minus intercept
+
+# Rename variables:
+
+lancs$variable <- c('auditory strength',
+                    'gustatory strength',
+                    'haptic strength',
+                    'interoceptive strength',
+                    'olfactory strength',
+                    'visual strength')
+
+# Show:
+
+lancs
+```
+
+Then make the plot:
+
+```{r, fig.width = 5, fig.height = 8}
+# Setup the plot:
+
+lancs_p <- lancs %>%
+  ggplot(aes(x = reorder(variable, Estimate), y = Estimate,
+             ymin = Q2.5, ymax = Q97.5))
+
+# Add geoms:
+
+lancs_p <- lancs_p + 
+  geom_point(shape = 15, size = 2) +
+  geom_hline(aes(yintercept = 0), linetype = 2) + 
+  geom_errorbar(width = 0.1)
+
+# Add cosmetics:
+
+lancs_p <- lancs_p +
+  ylab('Standardized coefficient') +
+  coord_flip() +
+  theme_minimal() +
+  theme(axis.title.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 15, b = 0,
+                                                    r = 0, l = 0),
+                                    face = 'bold',
+                                    size = 16),
+        axis.text.y = element_text(face = 'bold', size = 14))
+
+# Show plot:
+
+lancs_p
+
+# Save:
+
+ggsave(plot = lancs_p, filename = '../figures/lancs_coefficients.pdf',
+       width = 8, height = 6)
+```
+
+## Look at the new variables
+
+First, check Bayes R2:
+
+```{r}
+bayes_R2(amsel_mdl)
+bayes_R2(wisc_mdl)
+bayes_R2(levin_mdl)
+```
+
+Next, make a plot with Amsel (2012) results. Get the coefficients:
+
+```{r}
+amsel_coefs <- as_tibble(fixef(amsel_mdl)[-1, ])
+amsel_coefs$variable <- c('color ratings', 'taste ratings',
+                          'sound ratings', 'smell ratings',
+                          'motion ratings')
+
+# Show:
+
+amsel_coefs
+```
+
+Make the plot:
+
+```{r, fig.width = 5, fig.height = 8}
+# Setup the plot:
+
+amsel_p <- amsel_coefs %>%
+  ggplot(aes(x = reorder(variable, Estimate), y = Estimate,
+             ymin = Q2.5, ymax = Q97.5))
+
+# Add geoms:
+
+amsel_p <- amsel_p + 
+  geom_point(shape = 15, size = 2) +
+  geom_hline(aes(yintercept = 0), linetype = 2) + 
+  geom_errorbar(width = 0.1)
+
+# Add cosmetics:
+
+amsel_p <- amsel_p +
+  ylab('Standardized coefficient') +
+  coord_flip() +
+  theme_minimal() +
+  theme(axis.title.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 15, b = 0,
+                                                    r = 0, l = 0),
+                                    face = 'bold',
+                                    size = 16),
+        axis.text.y = element_text(face = 'bold', size = 14))
+
+# Show plot:
+
+amsel_p
+
+# Save:
+
+ggsave(plot = amsel_p, filename = '../figures/amsel_2012_coefficients.pdf',
+       width = 8, height = 6)
+```
+
+
+Next, make a plot with Wisconsin (2005) results. Get the coefficients:
+
+```{r}
+wisc_coefs <- as_tibble(fixef(wisc_mdl)[-1, ])
+wisc_coefs$variable <- c('sound ratings', 'color ratings',
+                          'motion ratings')
+
+# Show:
+
+wisc_coefs
+```
+
+Make the plot:
+
+```{r, fig.width = 5, fig.height = 8}
+# Setup the plot:
+
+wisc_p <- wisc_coefs %>%
+  ggplot(aes(x = reorder(variable, Estimate), y = Estimate,
+             ymin = Q2.5, ymax = Q97.5))
+
+# Add geoms:
+
+wisc_p <- wisc_p + 
+  geom_point(shape = 15, size = 2) +
+  geom_hline(aes(yintercept = 0), linetype = 2) + 
+  geom_errorbar(width = 0.1)
+
+# Add cosmetics:
+
+wisc_p <- wisc_p +
+  ylab('Standardized coefficient') +
+  coord_flip() +
+  theme_minimal() +
+  theme(axis.title.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 15, b = 0,
+                                                    r = 0, l = 0),
+                                    face = 'bold',
+                                    size = 16),
+        axis.text.y = element_text(face = 'bold', size = 14))
+
+# Show plot:
+
+wisc_p
+
+# Save:
+
+ggsave(plot = wisc_p, filename = '../figures/wisconsin_2005_coefficients.pdf',
+       width = 8, height = 6)
+```
+
+Make a double plot of this:
+
+```{r, fig.width = 12, fig.height = 6}
+# Add titles:
+
+amsel_p <- amsel_p +
+  ggtitle('(a) Amsel et al. (2012) norms') +
+  theme(title = element_text(face = 'bold',
+                             size = 18,
+                             margin = margin(t = 0, b = 15,
+                                             r = 0, l = 0)))
+
+wisc_p <- wisc_p +
+  ggtitle('(b) Wisconsin norms') +
+  theme(title = element_text(face = 'bold',
+                             size = 18,
+                             margin = margin(t = 0, b = 15,
+                                             r = 0, l = 0)))
+
+# Put into plot together:
+
+amsel_wisc_p <- amsel_p + plot_spacer() + wisc_p +
+  plot_layout(widths = c(8, 1, 8))
+
+
+# Show in script:
+
+amsel_wisc_p
+
+# Save:
+
+ggsave(plot = amsel_wisc_p,
+       filename = '../figures/amsel_wisconsin_double_plot.pdf',
+       width = 12, height = 5)
+```
+
 
 
