@@ -1,0 +1,45 @@
+---
+title: "Posterior predictive checks"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This script creates posterior predictive plots for each model.
+
+Load packages:
+
+```{r, warning = FALSE, message = FALSE}
+library(brms)
+library(tidyverse)
+```
+
+Load all models from the models folder:
+
+```{r}
+all_models <- list.files('../models/')
+
+for (i in seq_along(all_models)) {
+  load(str_c('../models/', all_models[i]))
+}
+```
+
+Loop through them to print posterior predictive checks into folder:
+
+```{r}
+model_names <- str_remove(all_models, '.RData')
+
+for (i in seq_along(all_models)) {
+  this_mdl <- get(model_names[i])
+  this_pp <- pp_check(this_mdl, nsample = 100)
+  ggsave(plot = this_pp, filename = str_c('../pp_checks/', model_names[i], '.pdf'))
+}
+```
+
+
+
+
