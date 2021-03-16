@@ -247,11 +247,11 @@ set.seed(666)
 
 cloud_p <- cloud_df %>% 
   ggplot(aes(label = word,
-             size = rating,
-             color = rating)) +
+             # color = rating,
+             size = rating)) +
   geom_text_wordcloud_area(eccentricity = 0.9) +
-  scale_size_area(max_size = 12) +
-  scale_color_gradient(low = '#5382b0', high = '#c79b3c' ) +
+  scale_size_area(max_size = 10) +
+  # scale_color_gradient(low = '#5382b0', high = '#c79b3c' ) +
   theme_minimal()
 
 # Show:
@@ -613,6 +613,8 @@ mono_corrs <- round(cor(df_vars, use = 'complete.obs'), 2)
 mono_corrs
 ```
 
+Performing correlations on 
+
 
 ## Interpret models
 
@@ -634,12 +636,20 @@ First, let's look at all r-squareds:
 bayes_R2(morph_mdl)
 bayes_R2(logmorph_mdl)
 
-# Sensory experience and modality:@
+# Sensory experience and modality:
 
 bayes_R2(SER_mdl)
+bayes_R2(conc_mdl)
 bayes_R2(lanc_mdl)
 bayes_R2(lanc_80_mdl)
 bayes_R2(lanc_max_mdl)
+
+# Lupyan & Winter (2018) models:
+
+bayes_R2(lupyan_CD_mdl)
+bayes_R2(lupyan_semD_mdl)
+bayes_R2(lupyan_semD_conc_mdl)
+bayes_R2(lupyan_pex_mdl)
 
 # Age of acquisition:
 
@@ -673,12 +683,19 @@ Next, let's look at the model summaries:
 summary(morph_mdl)
 summary(logmorph_mdl)
 
-# Sensory experience and modality:@
+# Sensory experience and modality:
 
 summary(SER_mdl)
 summary(lanc_mdl)
 summary(lanc_80_mdl)
 summary(lanc_max_mdl)
+
+# Lupyan & Winter (2018) models:
+
+summary(lupyan_CD_mdl)
+summary(lupyan_semD_mdl)
+summary(lupyan_semD_conc_mdl)
+summary(lupyan_pex_mdl)
 
 # Age of acquisition:
 
@@ -703,6 +720,14 @@ summary(POS_mdl)
 summary(all_mdl)
 summary(all_mdl_no_POS)
 ```
+
+Then again, full model with concreteness instead:
+
+```{r}
+summary(all_conc_mdl)
+summary(all_conc_mdl_no_POS)
+```
+
 
 ## Inference for categorical variables
 
@@ -763,8 +788,8 @@ fixefs
 Make a subset without freq / CD:
 
 ```{r}
-fixefs <- fixefs %>%
-  filter(!variable %in% c('log frequency', 'log contextual diversity'))
+# fixefs <- fixefs %>%
+#   filter(!variable %in% c('log frequency', 'log contextual diversity'))
 ```
 
 
