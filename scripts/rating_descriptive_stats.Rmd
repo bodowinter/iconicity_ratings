@@ -1,0 +1,350 @@
+---
+title: "Descriptive statistics of norms"
+author: "Bodo Winter"
+date: "03/09/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This script is focused _just_ on the norms, without considering any other variables. The `substantive_analysis.Rmd` script is focused on correlating the new norms with other variables to demonstrate construct validity.
+
+## Data and package loading
+
+Load packages:
+
+```{r, warning = FALSE, message = FALSE}
+library(tidyverse, quietly = TRUE)
+library(patchwork, quietly = TRUE)
+library(qqplotr, quietly = TRUE)
+```
+
+For reproducibility:
+
+```{r}
+packageVersion('tidyverse')
+packageVersion('patchwork')
+packageVersion('qqplotr')
+R.Version()$version.string
+```
+
+Load iconicity ratings:
+
+```{r, warning = FALSE, message = FALSE}
+# By-word averages:
+
+icon <- read.csv('../ratings/iconicity_ratings_averages.csv',
+                 stringsAsFactors = FALSE) %>% as_tibble()
+```
+
+For comparison, get the imputed data from Dingemanse & Thompson (2020):
+
+```{r}
+ding <- read.csv('../additional_data/dingemanse_thompson_2020.csv',
+                stringsAsFactors = FALSE) %>% as_tibble() %>% 
+  select(word, ico_imputed, ico_imputed_monomorph)
+```
+
+Get the Winter et al. (2017) ratings:
+
+```{r}
+winter_2017 <- read.csv('../additional_data/winter_2017_iconicity.csv',
+                        stringsAsFactors = FALSE) %>% 
+  as_tibble() %>% 
+  group_by(Word) %>% 
+  summarize(old_iconicity = mean(Iconicity)) %>% 
+  rename(word = Word)
+```
+
+Get the Perry et al. (2015) ratings:
+
+```{r}
+perry_2015 <- read_csv('../additional_data/perry_et_al_2015.csv')
+```
+
+## Check the distribution for reporting
+
+How many words?
+
+```{r}
+nrow(icon)
+```
+
+How many n do we have on average per word?
+
+```{r}
+mean(icon$n)
+range(icon$n)
+```
+
+Check the exact distribution of this:
+
+```{r}
+icon %>% 
+  count(n)
+```
+
+For how much of the dataset do we have at least 10? And then, at least 9?
+
+```{r}
+icon %>% 
+  count(n) %>% 
+  mutate(prop = nn / sum(nn),
+         cum_prop = 1 - cumsum(prop))
+```
+
+79% of the data have at least >= 10.
+98% of the data have at least >= 9.
+
+For reporting, 10 most iconic words:
+
+```{r}
+arrange(icon, desc(rating))
+```
+
+And 10 least iconic words:
+
+```{r}
+arrange(icon, rating)
+```
+
+First, grand mean and SD:
+
+```{r}
+icon %>% summarize(M = mean(rating),
+                   SD = sd(rating),
+                   SD = round(SD, 2))
+```
+
+First, the iconicity distribution plot, with superimposed normal distribution of exactly the sample mean and standard deviation:
+
+```{r, fig.width = 8, fig.height = 6}
+# Main plot with mappings:
+
+icon_p <- icon %>%
+  ggplot(aes(x = rating))
+
+# Add density geom and normal curve:
+
+icon_p <- icon_p + 
+  geom_density(fill = 'steelblue', alpha = 0.7, col = 'black') +
+  stat_function(fun = dnorm,
+                args = list(mean = mean(icon$rating),
+                            sd = sd(icon$rating)),
+                col = 'black',
+                linetype = 2,
+                size = 1.5)
+
+# Add cosmetics:
+
+icon_p <- icon_p + 
+  ylim(0, 0.5) + 
+  xlab('Iconicity rating') +
+  ylab('Density') +
+  theme_minimal() +
+  
+  # Axis labels:
+  theme(axis.title.x = element_text(face = 'bold',
+                                    size = 16,
+                                    margin = margin(t = 10, b = 0,
+                                                    l = 0, r = 0)),
+        axis.title.y = element_text(face = 'bold',
+                                    size = 16,
+                                    margin = margin(r = 15, l = 0,
+                                                    t = 0, b = 0))) +
+  
+  # Axis tick marks:
+  theme(axis.text.x = element_text(face = 'bold',
+                                   size = 12),
+        axis.text.y = element_text(face = 'bold',
+                                   size = 12))
+
+# Show in markdown:
+
+icon_p
+
+# Save:
+
+ggsave(plot = icon_p,
+       filename = '../figures/iconicity_ratings_density.pdf',
+       width = 8, height = 6)
+```
+
+Make a plot out of this:
+
+```{r, fig.width = 8, fig.height = 6}
+# Main plot:
+
+qq_p <- icon %>%
+  ggplot(mapping = aes(sample = rating)) +
+  stat_qq_band() +
+  stat_qq_line() +
+  stat_qq_point(alpha = 0.5, size = 0.2)
+
+# Add cosmetics:
+
+qq_p <- qq_p + 
+  xlab('Theoretical quantiles') +
+  ylab('Sample quantiles') +
+  theme_minimal() +
+  
+  # Axis labels:
+  theme(axis.title.x = element_text(face = 'bold',
+                                    size = 16,
+                                    margin = margin(t = 10, b = 0,
+                                                    l = 0, r = 0)),
+        axis.title.y = element_text(face = 'bold',
+                                    size = 16,
+                                    margin = margin(r = 15, l = 0,
+                                                    t = 0, b = 0))) +
+  
+  # Axis tick marks:
+  theme(axis.text.x = element_text(face = 'bold',
+                                   size = 12),
+        axis.text.y = element_text(face = 'bold',
+                                   size = 12))
+
+# Show in markdown:
+
+qq_p
+
+# Save:
+
+ggsave(plot = qq_p,
+       filename = '../figures/QQ_plot.pdf',
+       width = 8, height = 6)
+```
+
+Create the Pollock (2018) style plot:
+
+```{r, fig.width = 8, fig.height = 6}
+# Main plot:
+
+pollock_p <- icon %>%
+  ggplot(aes(x = rating, y = rating_sd)) +
+  geom_point(alpha = 0.2)
+
+# Add cosmetics:
+
+pollock_p <- pollock_p + 
+  xlab('Mean') +
+  ylab('Standard deviation') +
+  theme_minimal() +
+  
+  # Axis labels:
+  theme(axis.title.x = element_text(face = 'bold',
+                                    size = 16,
+                                    margin = margin(t = 10, b = 0,
+                                                    l = 0, r = 0)),
+        axis.title.y = element_text(face = 'bold',
+                                    size = 16,
+                                    margin = margin(r = 15, l = 0,
+                                                    t = 0, b = 0))) +
+  
+  # Axis tick marks:
+  theme(axis.text.x = element_text(face = 'bold',
+                                   size = 12),
+        axis.text.y = element_text(face = 'bold',
+                                   size = 12))
+
+# Show in markdown:
+
+pollock_p
+
+# Save:
+
+ggsave(plot = pollock_p,
+       filename = '../figures/pollock_2018.pdf',
+       width = 8, height = 6)
+```
+
+Create a double plot of normal distribution with Pollock (2018) graph:
+
+```{r, fig.width = 12, fig.height = 6}
+# Add titles:
+
+icon_p <- icon_p +
+  ggtitle('(a) Iconicity rating distribution') +
+  theme(title = element_text(face = 'bold',
+                             size = 18,
+                             margin = margin(t = 0, b = 15,
+                                             r = 0, l = 0)))
+
+pollock_p <- pollock_p +
+  ggtitle('(b) Standard deviation by mean') +
+  theme(title = element_text(face = 'bold',
+                             size = 18,
+                             margin = margin(t = 0, b = 15,
+                                             r = 0, l = 0)))
+
+# Put into plot together:
+
+figure_1 <- icon_p + plot_spacer() + pollock_p +
+  plot_layout(widths = c(8, 1, 8))
+
+
+# Show in script:
+
+figure_1
+
+# Save:
+
+ggsave(plot = figure_1,
+       filename = '../figures/figure1.pdf',
+       width = 12, height = 5)
+ggsave(plot = figure_1,
+       filename = '../figures/figure1.png',
+       width = 12, height = 5)
+```
+
+## Correlate with old ratings and imputed ratings
+
+Merge this with Winter et al. (2017) iconicity ratings:
+
+```{r}
+icon <- left_join(icon, winter_2017)
+```
+
+Correlate this:
+
+```{r}
+with(icon, cor.test(rating, old_iconicity, use = 'complete.obs'))
+```
+
+Merge this with the Dingemanse & Thompson (2020) data to correlate with imputed norms:
+
+```{r}
+icon <- left_join(icon, ding)
+```
+
+Check against imputed ratings from the Dingemanse & Thompson (2020) file:
+
+```{r}
+with(icon, cor.test(rating, ico_imputed, use = 'complete.obs'))
+with(icon, cor.test(rating, ico_imputed_monomorph, use = 'complete.obs'))
+```
+
+Reasonably high correlations given that this is imputed.
+
+Merge this with the Perry et al. (2015) data:
+
+```{r}
+icon <- left_join(icon, perry_2015)
+```
+
+Check against the different ratings from Perry et al. (2015):
+
+```{r}
+with(icon, cor.test(rating, E1_written, use = 'complete.obs'))
+with(icon, cor.test(rating, E2_spoken, use = 'complete.obs'))
+with(icon, cor.test(rating, E3_guessing, use = 'complete.obs'))
+```
+
+
+
+
+

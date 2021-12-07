@@ -20,10 +20,9 @@ The models are computed in the file "Bayesian_models.Rmd" and will be loaded in 
 Load packages:
 
 ```{r, warning = FALSE, message = FALSE}
-library(brms)
-library(tidyverse)
-library(patchwork)
-library(ggwordcloud)
+library(brms, quietly = TRUE)
+library(tidyverse, quietly = TRUE)
+library(patchwork, quietly = TRUE)
 ```
 
 For reproducibility:
@@ -32,37 +31,42 @@ For reproducibility:
 packageVersion('brms')
 packageVersion('tidyverse')
 packageVersion('patchwork')
-packageVersion('ggwordcloud')
 R.Version()$version.string
 ```
 
 Load iconicity ratings:
 
 ```{r, warning = FALSE, message = FALSE}
-icon <- read_csv('../ratings/iconicity_ratings.csv')
+icon <- read.csv('../ratings/iconicity_ratings.csv')
 ```
 
-Load additional datasets:
+Load additional datasets. Getting "buffer" errors with `read.csv()`, so will use `read.csv()` and `as_tibble()` for now.
 
 ```{r, warning = FALSE, message = FALSE}
 # Data for replications:
 
-SER <- read_csv('../additional_data/juhasz_yap_2013_SER.csv')
-AOA <- read_csv('../additional_data/kuperman_2012_AOA.csv')
-lanc <- read_csv('../additional_data/lancaster_sensorimotor_norms_2019.csv')
-SUBTL <- read_csv('../additional_data/brysbaert_2012_SUBTLEX_POS.csv')
-humor <- read_csv('../additional_data/engelthaler_hills_2018_humor.csv')
-ding <- read_csv('../additional_data/dingemanse_thompson_2020.csv')
+SER <- read.csv('../additional_data/juhasz_yap_2013_SER.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
+AOA <- read.csv('../additional_data/kuperman_2012_AOA.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
+lanc <- read.csv('../additional_data/lancaster_sensorimotor_norms_2019.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
+SUBTL <- read.csv('../additional_data/brysbaert_2012_SUBTLEX_POS.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
+humor <- read.csv('../additional_data/engelthaler_hills_2018_humor.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
+ding <- read.csv('../additional_data/dingemanse_thompson_2020.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
 
 # Data for controlling morphology:
 
-ELP <- read_csv('../additional_data/balota_2007_ELP.csv')
+ELP <- read.csv('../additional_data/balota_2007_ELP.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
 
 # Data for new analyses:
 
-amsel <- read_csv('../additional_data/amsel_2012_SER.csv')
-wisc <- read_csv('../additional_data/wisconsin_2005_norms.csv')
-levin <- read_csv('../additional_data/levin_1991_verb_classes.csv')
+levin <- read.csv('../additional_data/levin_1991_verb_classes.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
 ```
 
 Rename folders and simplify data frames to include only relevant info. Also make Lancaster norm Word column lowercase. Log10 transform SUBTLEX frequencies and contextual diversity:
@@ -109,16 +113,6 @@ humor <- select(humor, word, mean) %>%
 
 ding <- select(ding, logletterfreq, word, ico, ico_imputed, ico_imputed_monomorph)
 
-# Amsel (2012) and Wisconsin (2005) data:
-
-amsel <- select(amsel, Concept, Smell, Color, Taste, Sound, Motion) %>% 
-  rename(amsel_smell = Smell, amsel_color = Color,
-         amsel_taste = Taste, amsel_sound = Sound,
-         amsel_motion = Motion)
-wisc <- select(wisc, Word, SoundMean, ColorMean, MotionMean) %>%
-  rename(wisc_sound = SoundMean, wisc_color = ColorMean, wisc_motion = MotionMean)
-
-
 # ELP data:
 
 ELP <- select(ELP, Word, NMorph) %>% 
@@ -135,8 +129,6 @@ icon <- left_join(icon, SUBTL, by = c('word' = 'Word'))
 icon <- left_join(icon, humor, by = c('word' = 'word'))
 icon <- left_join(icon, lanc, by = c('word' = 'Word'))
 icon <- left_join(icon, ding, by = c('word' = 'word'))
-icon <- left_join(icon, wisc, by = c('word' = 'Word'))
-icon <- left_join(icon, amsel, by = c('word' = 'Concept'))
 icon <- left_join(icon, ELP, by = c('word' = 'Word'))
 ```
 
@@ -169,16 +161,6 @@ icon <- mutate(icon,
                humor_z = z_score(humor),
                logletter_z = z_score(logletterfreq),
                lognmorph_z = z_score(LogMorph),
-               
-               amsel_color_z = z_score(amsel_color),
-               amsel_smell_z = z_score(amsel_smell),
-               amsel_taste_z = z_score(amsel_taste),
-               amsel_sound_z = z_score(amsel_sound),
-               amsel_motion_z = z_score(amsel_motion),
-               
-               wisc_sound_z = z_score(wisc_sound),
-               wisc_color_z = z_score(wisc_color),
-               wisc_motion_z = z_score(wisc_motion),
                
                # Lancaster norms:
                Aud_z = z_score(Aud),
@@ -232,259 +214,6 @@ Check:
 table(icon_POS$POS_simple)
 ```
 
-## Create a word cloud
-
-Create a word cloud. First, extract the first 100 most iconic words:
-
-```{r}
-cloud_df <- icon %>% arrange(desc(rating)) %>% 
-  slice_head(n = 100)
-```
-
-
-```{r, fig.width = 14, fig.height = 15, warning = FALSE, message = FALSE}
-set.seed(666)
-
-cloud_p <- cloud_df %>% 
-  ggplot(aes(label = word,
-             # color = rating,
-             size = rating)) +
-  geom_text_wordcloud_area(eccentricity = 0.9) +
-  scale_size_area(max_size = 10) +
-  # scale_color_gradient(low = '#5382b0', high = '#c79b3c' ) +
-  theme_minimal()
-
-# Show:
-
-cloud_p
-ggsave(plot = cloud_p, filename = '../figures/wordcloud.pdf',
-       width = 11, height = 7)
-```
-
-## Correlate with  old ratings and imputed ratings
-
-Check against imputed ratings from the Dingemanse & Thompson (2020) file:
-
-```{r}
-with(icon, cor(rating, ico_imputed, use = 'complete.obs'))
-with(icon, cor(rating, ico_imputed_monomorph, use = 'complete.obs'))
-```
-
-Check against old ratings from Dingemanse & Thompson (2020) file - careful, this is a subset:
-
-```{r}
-with(icon, cor(rating, ico, use = 'complete.obs'))
-```
-
-
-
-## Check the distribution for reporting
-
-For reporting, 10 most iconic words:
-
-```{r}
-arrange(icon, desc(rating))
-```
-
-And 10 least iconic words:
-
-```{r}
-arrange(icon, rating)
-```
-
-First, mean and SD:
-
-```{r}
-icon %>% summarize(M = mean(rating),
-                   SD = sd(rating),
-                   SD = round(SD, 2))
-```
-
-First, the iconicity distribution plot:
-
-```{r, fig.width = 8, fig.height = 6}
-# Main plot with mappings:
-
-icon_p <- icon %>%
-  ggplot(aes(x = rating))
-
-# Add normal curve:
-
-icon_p <- icon_p + 
-  stat_function(fun = dnorm,
-                args = list(mean = mean(icon$rating),
-                            sd = sd(icon$rating)),
-                col = 'black',
-                linetype = 2)
-
-# Add density geom:
-
-icon_p <- icon_p + 
-  geom_density(fill = 'steelblue', alpha = 0.7, col = 'black')
-
-# Add cosmetics:
-
-icon_p <- icon_p + 
-  ylim(0, 0.5) + 
-  xlab('Iconicity rating') +
-  ylab('Density') +
-  theme_minimal() +
-  
-  # Axis labels:
-  theme(axis.title.x = element_text(face = 'bold',
-                                    size = 16,
-                                    margin = margin(t = 10, b = 0,
-                                                    l = 0, r = 0)),
-        axis.title.y = element_text(face = 'bold',
-                                    size = 16,
-                                    margin = margin(r = 15, l = 0,
-                                                    t = 0, b = 0))) +
-  
-  # Axis tick marks:
-  theme(axis.text.x = element_text(face = 'bold',
-                                   size = 12),
-        axis.text.y = element_text(face = 'bold',
-                                   size = 12))
-
-# Show in markdown:
-
-icon_p
-
-# Save:
-
-ggsave(plot = icon_p,
-       filename = '../figures/iconicity_ratings_density.pdf',
-       width = 8, height = 6)
-```
-
-Create a Q-Q plot. First, get the quartiles of this distribution (x), against the quartiles of the normal (y):
-
-```{r}
-QQ <- tibble(x = qqnorm(icon$rating, plot = FALSE)$x,
-             y = qqnorm(icon$rating, plot = FALSE)$y)
-```
-
-Make a plot out of this:
-
-```{r, fig.width = 8, fig.height = 6}
-# Main plot:
-
-qq_p <- QQ %>%
-  ggplot(aes(x = x, y = y)) +
-  geom_point(alpha = 0.2)
-
-# Add cosmetics:
-
-qq_p <- qq_p + 
-  xlab('Theoretical quantiles') +
-  ylab('Sample quantiles') +
-  theme_minimal() +
-  
-  # Axis labels:
-  theme(axis.title.x = element_text(face = 'bold',
-                                    size = 16,
-                                    margin = margin(t = 10, b = 0,
-                                                    l = 0, r = 0)),
-        axis.title.y = element_text(face = 'bold',
-                                    size = 16,
-                                    margin = margin(r = 15, l = 0,
-                                                    t = 0, b = 0))) +
-  
-  # Axis tick marks:
-  theme(axis.text.x = element_text(face = 'bold',
-                                   size = 12),
-        axis.text.y = element_text(face = 'bold',
-                                   size = 12))
-
-# Show in markdown:
-
-qq_p
-
-# Save:
-
-ggsave(plot = qq_p,
-       filename = '../figures/QQ_plot.pdf',
-       width = 8, height = 6)
-```
-
-Create the Pollock (2018) style plot:
-
-```{r, fig.width = 8, fig.height = 6}
-# Main plot:
-
-pollock_p <- icon %>%
-  ggplot(aes(x = rating, y = rating_sd)) +
-  geom_point(alpha = 0.2)
-
-# Add cosmetics:
-
-pollock_p <- pollock_p + 
-  xlab('Mean') +
-  ylab('Standard deviation') +
-  theme_minimal() +
-  
-  # Axis labels:
-  theme(axis.title.x = element_text(face = 'bold',
-                                    size = 16,
-                                    margin = margin(t = 10, b = 0,
-                                                    l = 0, r = 0)),
-        axis.title.y = element_text(face = 'bold',
-                                    size = 16,
-                                    margin = margin(r = 15, l = 0,
-                                                    t = 0, b = 0))) +
-  
-  # Axis tick marks:
-  theme(axis.text.x = element_text(face = 'bold',
-                                   size = 12),
-        axis.text.y = element_text(face = 'bold',
-                                   size = 12))
-
-# Show in markdown:
-
-pollock_p
-
-# Save:
-
-ggsave(plot = pollock_p,
-       filename = '../figures/pollock_2018.pdf',
-       width = 8, height = 6)
-```
-
-Create a double plot of normal distribution with Pollock (2018) graph:
-
-```{r, fig.width = 12, fig.height = 6}
-# Add titles:
-
-icon_p <- icon_p +
-  ggtitle('(a) Iconicity rating distribution') +
-  theme(title = element_text(face = 'bold',
-                             size = 18,
-                             margin = margin(t = 0, b = 15,
-                                             r = 0, l = 0)))
-
-pollock_p <- pollock_p +
-  ggtitle('(b) Standard deviation by mean') +
-  theme(title = element_text(face = 'bold',
-                             size = 18,
-                             margin = margin(t = 0, b = 15,
-                                             r = 0, l = 0)))
-
-# Put into plot together:
-
-figure_1 <- icon_p + plot_spacer() + pollock_p +
-  plot_layout(widths = c(8, 1, 8))
-
-
-# Show in script:
-
-figure_1
-
-# Save:
-
-ggsave(plot = figure_1,
-       filename = '../figures/figure1.pdf',
-       width = 12, height = 5)
-```
 
 ## Check overlap with different datasets for reporting
 
@@ -570,12 +299,22 @@ For comparison, the least iconic classes:
 arrange(levin_avg, M)
 ```
 
+Print the table:
+
+```{r}
+levin_avg <- mutate(levin_avg, M = round(M, 2),
+                    SD = round(SD, 2))
+write_csv(levin_avg, '../tables/levin_averages.csv')
+```
+
+
 ## Correlation table
 
 Get the variables of interest:
 
 ```{r}
-these_vars <- c("rating", "SER", "AOA", "LogFreq", "LogCD", "logletterfreq", "humor", "NMorph")
+these_vars <- c("rating", "SER", "AOA", "LogFreq", "LogCD",
+                "logletterfreq", "humor", "NMorph")
 ```
 
 Get these vars and perform pairwise correlations:
@@ -613,8 +352,6 @@ mono_corrs <- round(cor(df_vars, use = 'complete.obs'), 2)
 mono_corrs
 ```
 
-Performing correlations on 
-
 
 ## Interpret models
 
@@ -631,48 +368,26 @@ for (i in seq_along(all_models)) {
 First, let's look at all r-squareds:
 
 ```{r}
-# Morphology control variables:
-
-bayes_R2(morph_mdl)
-bayes_R2(logmorph_mdl)
-
 # Sensory experience and modality:
 
-bayes_R2(SER_mdl)
-bayes_R2(conc_mdl)
 bayes_R2(lanc_mdl)
 bayes_R2(lanc_80_mdl)
 bayes_R2(lanc_max_mdl)
 
 # Lupyan & Winter (2018) models:
 
-bayes_R2(lupyan_CD_mdl)
-bayes_R2(lupyan_semD_mdl)
-bayes_R2(lupyan_semD_conc_mdl)
 bayes_R2(lupyan_pex_mdl)
-
-# Age of acquisition:
-
-bayes_R2(AOA_mdl)
-
-# Dingemanse & Thompson (2020):
-
-bayes_R2(humor_mdl)
-bayes_R2(logletter_mdl)
-
-# Frequency and contextual diversity:
-
-bayes_R2(freq_mdl)
-bayes_R2(freq_CD_mdl)
-
-# Part-of-speech:
-
-bayes_R2(POS_mdl)
 
 # FUll model:
 
 bayes_R2(all_mdl)
 bayes_R2(all_mdl_no_POS)
+bayes_R2(noweight_mdl)
+bayes_R2(all_conc_mdl)
+
+# Generality model:
+
+bayes_R2(gen_mdl)
 ```
 
 Next, let's look at the model summaries:
@@ -697,101 +412,70 @@ summary(lupyan_semD_mdl)
 summary(lupyan_semD_conc_mdl)
 summary(lupyan_pex_mdl)
 
-# Age of acquisition:
-
-summary(AOA_mdl)
-
-# Dingemanse & Thompson (2020):
-
-summary(humor_mdl)
-summary(logletter_mdl)
-
-# Frequency and contextual diversity:
-
-summary(freq_mdl)
-summary(freq_CD_mdl)
-
-# Part-of-speech:
-
-summary(POS_mdl)
-
 # FUll model:
 
 summary(all_mdl)
 summary(all_mdl_no_POS)
+
+# Generality model
+
+summary(gen_mdl)
 ```
 
 Then again, full model with concreteness instead:
 
 ```{r}
 summary(all_conc_mdl)
-summary(all_conc_mdl_no_POS)
 ```
-
-
-## Inference for categorical variables
-
-Part of speech (WAIC here):
-
-```{r}
-WAIC(POS_mdl)
-WAIC(POS_null)
-```
-
-Part of speech from main model:
-
-```{r}
-WAIC(all_mdl)
-WAIC(all_mdl_no_POS)
-```
-
-Levin (WAIC here):
-
-```{r}
-WAIC(levin_mdl)
-WAIC(levin_null_mdl)
-```
-
-
 
 ## Make a coefficient plot of the main model
 
 Get the fixed effects:
 
 ```{r}
-these_rows <- row.names(fixef(all_mdl_no_POS))
-fixefs <- as_tibble(fixef(all_mdl_no_POS))
+these_rows <- row.names(fixef(all_mdl))
+fixefs <- as_tibble(fixef(all_mdl))
 fixefs$variable <- these_rows
 
 # Get rid of intercept:
 
 fixefs <- fixefs[-1, ]
 
+# Get rid of the POS predictors for the plot:
+
+POS <- c('POS_simpleAdjective', 'POS_simpleAdverb',
+         'POS_simpleInterjection', 'POS_simpleNoun',
+         'POS_simpleVerb')
+fixefs <- filter(fixefs,
+                 !(variable %in% POS))
+
 # Rename the variables:
 
 fixefs <- mutate(fixefs,
                  variable = str_remove(variable, '_z'),
-                 variable = ifelse(variable == 'humor', 'humor ratings', variable),
-                 variable = ifelse(variable == 'LogFreq', 'log frequency', variable),
-                 variable = ifelse(variable == 'LogCD', 'log contextual diversity', variable),
-                 variable = ifelse(variable == 'SER', 'sensory experience ratings', variable),
-                 variable = ifelse(variable == 'AOA', 'age-of-acquisition ratings', variable),
-                 variable = ifelse(variable == 'ARC', 'ARC (semantic neighborhood density)', variable),
-                 variable = ifelse(variable == 'NMorph', 'number of morphemes', variable),
-                 variable = ifelse(variable == 'logletter', 'log letter frequency', variable))
+                 variable = ifelse(variable == 'humor',
+                                   'humor ratings', variable),
+                 variable = ifelse(variable == 'LogFreq',
+                                   'log frequency', variable),
+                 variable = ifelse(variable == 'LogCD',
+                                   'log contextual diversity', variable),
+                 variable = ifelse(variable == 'SER',
+                                   'sensory experience ratings (SER)', variable),
+                 variable = ifelse(variable == 'AOA',
+                                   'age-of-acquisition ratings', variable),
+                 variable = ifelse(variable == 'ARC',
+                                   'ARC (semantic neighborhood density)', variable),
+                 variable = ifelse(variable == 'SER:ARC_z',
+                                   'ARC * SER interaction', variable),
+                 variable = ifelse(variable == 'NMorph',
+                                   'number of morphemes', variable),
+                 variable = ifelse(variable == 'logletter',
+                                   'log letter frequency', variable))
 
 # Show tibble:
 
 fixefs
 ```
-
-Make a subset without freq / CD:
-
-```{r}
-# fixefs <- fixefs %>%
-#   filter(!variable %in% c('log frequency', 'log contextual diversity'))
-```
-
 
 Make a coefficient plot of this:
 
@@ -829,7 +513,7 @@ coef_p
 # Save:
 
 ggsave(plot = coef_p, filename = '../figures/main_coefficients.pdf',
-       width = 9, height = 6)
+       width = 9, height = 5.5)
 ```
 
 Create the predictions for POS categories:
@@ -917,7 +601,69 @@ ggsave(plot = POS_p, filename = '../figures/POS_preds.pdf',
        width = 7, height = 7)
 ```
 
-Make a coefficient plot of the sensory modality effects. First, get the coefficients:
+Make a coefficient plot of the sensory modality effects. First, get the coefficients of the 80th percentile model:
+
+```{r}
+# Get coefficients:
+
+lancs <- as_tibble(fixef(lanc_80_mdl)[-1, ]) # minus intercept
+
+# Rename variables:
+
+lancs$variable <- c('auditory strength',
+                    'gustatory strength',
+                    'haptic strength',
+                    'interoceptive strength',
+                    'olfactory strength',
+                    'visual strength',
+                    # 'max perceptual strength',
+                    'modality exclusivity')
+
+# Show:
+
+lancs
+```
+
+Then make the plot:
+
+```{r, fig.width = 5, fig.height = 8}
+# Setup the plot:
+
+lancs_p <- lancs %>%
+  ggplot(aes(x = reorder(variable, Estimate), y = Estimate,
+             ymin = Q2.5, ymax = Q97.5))
+
+# Add geoms:
+
+lancs_p <- lancs_p + 
+  geom_point(shape = 15, size = 2) +
+  geom_hline(aes(yintercept = 0), linetype = 2) + 
+  geom_errorbar(width = 0.1)
+
+# Add cosmetics:
+
+lancs_p <- lancs_p +
+  ylab('Standardized coefficient') +
+  coord_flip() +
+  theme_minimal() +
+  theme(axis.title.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 15, b = 0,
+                                                    r = 0, l = 0),
+                                    face = 'bold',
+                                    size = 16),
+        axis.text.y = element_text(face = 'bold', size = 14))
+
+# Show plot:
+
+lancs_p
+
+# Save:
+
+ggsave(plot = lancs_p, filename = '../figures/lancs_80_coefficients.pdf',
+       width = 8, height = 6)
+```
+
+Next get the coefficients of the general model (no exclusions):
 
 ```{r}
 # Get coefficients:
@@ -931,7 +677,9 @@ lancs$variable <- c('auditory strength',
                     'haptic strength',
                     'interoceptive strength',
                     'olfactory strength',
-                    'visual strength')
+                    'visual strength',
+                    'max perceptual strength',
+                    'modality exclusivity')
 
 # Show:
 
@@ -977,155 +725,16 @@ ggsave(plot = lancs_p, filename = '../figures/lancs_coefficients.pdf',
        width = 8, height = 6)
 ```
 
-## Look at the new variables
+## Look at Beth Levin verb classes (new results)
 
 First, check Bayes R2:
 
 ```{r}
-bayes_R2(amsel_mdl)
-bayes_R2(wisc_mdl)
 bayes_R2(levin_mdl)
 ```
 
-Next, make a plot with Amsel (2012) results. Get the coefficients:
+Check the loo compare for the model:
 
 ```{r}
-amsel_coefs <- as_tibble(fixef(amsel_mdl)[-1, ])
-amsel_coefs$variable <- c('color ratings', 'taste ratings',
-                          'sound ratings', 'smell ratings',
-                          'motion ratings')
-
-# Show:
-
-amsel_coefs
+levin_loo_compare
 ```
-
-Make the plot:
-
-```{r, fig.width = 5, fig.height = 8}
-# Setup the plot:
-
-amsel_p <- amsel_coefs %>%
-  ggplot(aes(x = reorder(variable, Estimate), y = Estimate,
-             ymin = Q2.5, ymax = Q97.5))
-
-# Add geoms:
-
-amsel_p <- amsel_p + 
-  geom_point(shape = 15, size = 2) +
-  geom_hline(aes(yintercept = 0), linetype = 2) + 
-  geom_errorbar(width = 0.1)
-
-# Add cosmetics:
-
-amsel_p <- amsel_p +
-  ylab('Standardized coefficient') +
-  coord_flip() +
-  theme_minimal() +
-  theme(axis.title.y = element_blank(),
-        axis.title.x = element_text(margin = margin(t = 15, b = 0,
-                                                    r = 0, l = 0),
-                                    face = 'bold',
-                                    size = 16),
-        axis.text.y = element_text(face = 'bold', size = 14))
-
-# Show plot:
-
-amsel_p
-
-# Save:
-
-ggsave(plot = amsel_p, filename = '../figures/amsel_2012_coefficients.pdf',
-       width = 8, height = 6)
-```
-
-
-Next, make a plot with Wisconsin (2005) results. Get the coefficients:
-
-```{r}
-wisc_coefs <- as_tibble(fixef(wisc_mdl)[-1, ])
-wisc_coefs$variable <- c('sound ratings', 'color ratings',
-                          'motion ratings')
-
-# Show:
-
-wisc_coefs
-```
-
-Make the plot:
-
-```{r, fig.width = 5, fig.height = 8}
-# Setup the plot:
-
-wisc_p <- wisc_coefs %>%
-  ggplot(aes(x = reorder(variable, Estimate), y = Estimate,
-             ymin = Q2.5, ymax = Q97.5))
-
-# Add geoms:
-
-wisc_p <- wisc_p + 
-  geom_point(shape = 15, size = 2) +
-  geom_hline(aes(yintercept = 0), linetype = 2) + 
-  geom_errorbar(width = 0.1)
-
-# Add cosmetics:
-
-wisc_p <- wisc_p +
-  ylab('Standardized coefficient') +
-  coord_flip() +
-  theme_minimal() +
-  theme(axis.title.y = element_blank(),
-        axis.title.x = element_text(margin = margin(t = 15, b = 0,
-                                                    r = 0, l = 0),
-                                    face = 'bold',
-                                    size = 16),
-        axis.text.y = element_text(face = 'bold', size = 14))
-
-# Show plot:
-
-wisc_p
-
-# Save:
-
-ggsave(plot = wisc_p, filename = '../figures/wisconsin_2005_coefficients.pdf',
-       width = 8, height = 6)
-```
-
-Make a double plot of this:
-
-```{r, fig.width = 12, fig.height = 6}
-# Add titles:
-
-amsel_p <- amsel_p +
-  ggtitle('(a) Amsel et al. (2012) norms') +
-  theme(title = element_text(face = 'bold',
-                             size = 18,
-                             margin = margin(t = 0, b = 15,
-                                             r = 0, l = 0)))
-
-wisc_p <- wisc_p +
-  ggtitle('(b) Wisconsin norms') +
-  theme(title = element_text(face = 'bold',
-                             size = 18,
-                             margin = margin(t = 0, b = 15,
-                                             r = 0, l = 0)))
-
-# Put into plot together:
-
-amsel_wisc_p <- amsel_p + plot_spacer() + wisc_p +
-  plot_layout(widths = c(8, 1, 8))
-
-
-# Show in script:
-
-amsel_wisc_p
-
-# Save:
-
-ggsave(plot = amsel_wisc_p,
-       filename = '../figures/amsel_wisconsin_double_plot.pdf',
-       width = 12, height = 5)
-```
-
-
-

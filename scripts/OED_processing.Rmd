@@ -1,0 +1,312 @@
+---
+title: "Process and analyze OED etymologies"
+author: "Bodo Winter"
+date: "14/10/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+Load packages:
+
+```{r, warning = FALSE, message = FALSE}
+library(tidyverse, quietly = TRUE)
+library(brms, quietly = TRUE)
+library(effsize, quietly = TRUE)
+```
+
+Load data:
+
+```{r, warning = FALSE, message = FALSE}
+OED <- read_csv('../additional_data/OED_all.csv')
+```
+
+Check structure:
+
+```{r}
+OED
+```
+
+Count `etym_type` column content:
+
+```{r}
+OED %>% count(etym_type, sort = TRUE)
+```
+
+There's a lot of categories. The following conversions should happen: 1) Merge `uncertain` and `uknown` together. 2) Merge `properName` and `properNameHybrid`. 3) Merge `borrowingHybrid` and `borrwing`. 4) Merge marginal word formation processes into an `other` category.
+
+```{r}
+others <- c('arbitrary', 'initialism', 'acronym', 'backformation',
+            'shortening', 'variant', 'inherited', 'blend')
+
+OED <- mutate(OED,
+              etym_simplified = ifelse(etym_type == 'unknown',
+                                       'uncertain', etym_type),
+              etym_simplified = ifelse(etym_simplified == 'properNameHybrid',
+                                       'properName', etym_simplified),
+              etym_simplified = ifelse(etym_simplified == 'borrowingHybrid',
+                                       'borrowing', etym_simplified),
+              etym_simplified = ifelse(etym_simplified %in% others,
+                                       'other', etym_simplified))
+
+# Count again:
+
+OED %>% count(etym_simplified, sort = TRUE)
+```
+
+Get rid of NAs:
+
+```{r}
+OED <- filter(OED,
+              !is.na(etym_simplified))
+```
+
+We have to map OED, which is organized in terms of senses, to the remaining data. For this we need to collapse the sense information. For this, let's do a  majority vote where word senses are combined:
+
+```{r}
+OED_counts <- OED %>%
+  count(word, etym_simplified)
+```
+
+Make it wide:
+
+```{r}
+OED_wide <- OED_counts %>%
+  pivot_wider(names_from = etym_simplified, values_from = n, values_fill = 0)
+```
+
+The order does matter for cases where there is the same number. Let's put `other` first, the most hotchpotch category, then everything else in order of n of overall category (see `etym_simplified` counts above):
+
+```{r}
+OED_wide <- select(OED_wide,
+                   word,
+                   other, derivative, borrowing, compound,
+                   conversion, properName, uncertain, imitative)
+```
+
+Get whatever is the maximum:
+
+```{r}
+these_maxes <- apply(OED_wide[, 2:ncol(OED_wide)], MARGIN = 1, FUN = which.max)
+```
+
+Get the corresponding etymologies:
+
+```{r}
+etym_set <- colnames(select(OED_wide, other:imitative))
+OED_wide$main_etym <- etym_set[these_maxes]
+```
+
+Get rid of the remaining columns:
+
+```{r}
+OED_wide <- select(OED_wide, word, main_etym)
+```
+
+Count:
+
+```{r}
+nrow(OED_wide)
+```
+
+
+## Merge with iconicity ratings and analyze
+
+Load iconicity ratings:
+
+```{r, message = FALSE, warning = FALSE}
+icon <- read_csv('../ratings/iconicity_ratings.csv')
+```
+
+Merge this with iconicity ratings:
+
+```{r}
+icon <- left_join(icon, OED_wide)
+```
+
+For how many do we have the etymological information:
+
+```{r}
+sum(!is.na(icon$main_etym)) / nrow(icon)
+```
+
+Change `properName` so that it is more printable for later plotting:
+
+```{r}
+icon <- mutate(icon,
+               main_etym = ifelse(main_etym == 'properName',
+                                  'proper name', main_etym))
+```
+
+Check how many words this analysis is for:
+
+```{r}
+nrow(icon)
+```
+
+Get rid of the ones that are `NA`:
+
+```{r}
+icon <- filter(icon,
+               !is.na(main_etym))
+```
+
+
+Compute average and standard deviations of iconicity:
+
+```{r}
+icon_avgs <- icon %>%
+  group_by(main_etym) %>% 
+  summarize(M = mean(rating),
+            SD = sd(rating),
+            M = round(M, 1),
+            SD = round(SD, 1)) %>% 
+  arrange(desc(M))
+
+# Show:
+
+icon_avgs
+```
+
+Convert to factor and order it so that it is in order of mean iconicity for plotting:
+
+```{r}
+icon <- mutate(icon,
+               main_etym = factor(main_etym, levels = icon_avgs$main_etym))
+```
+
+Make a plot of this:
+
+```{r}
+# Plot basics:
+
+OED_p <- icon %>% 
+  ggplot(aes(x = reorder(main_etym, rating), y = rating, fill = main_etym)) +
+  geom_boxplot(width = 0.6)
+
+# Scale and axes:
+
+OED_p <- OED_p +
+  scale_fill_brewer(palette = 'YlOrRd', direction = -1) +
+  coord_cartesian(ylim = c(1, 7)) +
+  scale_y_continuous(breaks = 1:7) +
+  ylab('Iconicity rating') +
+  xlab(NULL)
+
+# Cosmetics:
+
+OED_p <- OED_p +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.y = element_text(face = 'bold', size = 14,
+                                    margin = margin(r = 10)),
+        legend.position = 'none')
+
+# Show and save:
+
+OED_p
+ggsave('../figures/OED_iconicity.pdf', plot = OED_p,
+       width = 6.5, height = 4)
+```
+
+## Bayesian model of imitative versus not imitative
+
+Weakly informative priors on slope coefficient:
+
+```{r}
+priors <- c(prior(normal(0, 0.5), class = b))
+```
+
+For MCMC settings (will be used only for models that find it hard to converge):
+
+```{r}
+mcmc_controls <- list(adapt_delta = 0.999,
+                      max_treedepth = 13)
+```
+
+We will convert the SDs to the range 0 to 1. I used this as a guide:
+
+https://stackoverflow.com/questions/929103/convert-a-number-range-to-another-range-maintaining-ratio
+
+```{r}
+# mins and maxes:
+
+sd_min <- min(icon$rating_sd)
+sd_max <- max(icon$rating_sd)
+
+# convert:
+
+icon <- mutate(icon,
+               w = (rating_sd - sd_min) / (sd_max - sd_min),
+               
+               # to invert (so that max SD = lowest weight):
+               
+               w = w * -1 + 1,
+               
+               # renormalize these weights to have mean 1:
+               
+               w = w / mean(w))
+
+# check:
+
+mean(icon$w)
+arrange(icon, desc(w))
+arrange(icon, w)
+```
+
+Create an imitation versus rest variable:
+
+```{r}
+icon <- mutate(icon,
+               imit = ifelse(main_etym == 'imitative', 'imitative', 'not imitative'))
+```
+
+Averages:
+
+```{r}
+icon %>% 
+  group_by(imit) %>% 
+  summarize(M = mean(rating),
+            SD = sd(rating))
+```
+
+Cohen's d:
+
+```{r}
+with(icon, cohen.d(rating ~ imit))
+```
+
+Create a model of this:
+
+```{r, cache = TRUE}
+imit_mdl <- brm(rating | weights(w) ~ 1 + imit,
+               data = icon,
+               prior = priors,
+               
+               # MCMC settings:
+               
+               seed = 666,
+               cores = 4,
+               warmup = 2000, iter = 4000, chains = 4)
+
+# Save:
+
+save(imit_mdl, file = '../models/OED_imitative_mdl.RData')
+```
+
+Check model:
+
+```{r}
+imit_mdl
+```
+
+Perform hypothesis test of imitative versus non-imitative:
+
+```{r}
+hypothesis(imit_mdl, 'imitnotimitative > 0')
+```
+

@@ -1,5 +1,5 @@
 ---
-title: "Bayesian model computation"
+title: "Bayesian models"
 output: html_document
 ---
 
@@ -16,9 +16,9 @@ This markdown computes the Bayesian models that underlie the main analysis file 
 Load packages:
 
 ```{r, warning = FALSE, message = FALSE}
-library(brms)
-library(car) # for variance inflation factors
-library(tidyverse)
+library(brms, quietly = TRUE)
+library(car, quietly = TRUE) # for variance inflation factors
+library(tidyverse, quietly = TRUE)
 ```
 
 For reproducibility:
@@ -33,7 +33,8 @@ R.Version()$version.string
 Load iconicity ratings:
 
 ```{r, warning = FALSE, message = FALSE}
-icon <- read_csv('../ratings/iconicity_ratings.csv')
+icon <- read.csv('../ratings/iconicity_ratings.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
 ```
 
 Load additional datasets:
@@ -41,27 +42,38 @@ Load additional datasets:
 ```{r, warning = FALSE, message = FALSE}
 # Data for replications:
 
-SER <- read_csv('../additional_data/juhasz_yap_2013_SER.csv')
-AOA <- read_csv('../additional_data/kuperman_2012_AOA.csv')
-lanc <- read_csv('../additional_data/lancaster_sensorimotor_norms_2019.csv')
-SUBTL <- read_csv('../additional_data/brysbaert_2012_SUBTLEX_POS.csv')
-humor <- read_csv('../additional_data/engelthaler_hills_2018_humor.csv')
-ding <- read_csv('../additional_data/dingemanse_thompson_2020.csv')
-ARC <- read_csv('../additional_data/shaoul_westbury_2010_ARC.csv')
-conc <- read_csv('../additional_data/brysbaert_2014_concreteness.csv')
-pex <- read_delim('../additional_data/pexman_concreteness_SDT.txt',
-                  delim = '\t')
-semD <- read_csv('../additional_data/hoffman_2012_semD.csv')
+SER <- read.csv('../additional_data/juhasz_yap_2013_SER.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
+AOA <- read.csv('../additional_data/kuperman_2012_AOA.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
+lanc <- read.csv('../additional_data/lancaster_sensorimotor_norms_2019.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
+SUBTL <- read.csv('../additional_data/brysbaert_2012_SUBTLEX_POS.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
+humor <- read.csv('../additional_data/engelthaler_hills_2018_humor.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
+ding <- read.csv('../additional_data/dingemanse_thompson_2020.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
+ARC <- read.csv('../additional_data/shaoul_westbury_2010_ARC.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
+conc <- read.csv('../additional_data/brysbaert_2014_concreteness.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
 
 # Data for controlling morphology:
 
-ELP <- read_csv('../additional_data/balota_2007_ELP.csv')
+ELP <- read.csv('../additional_data/balota_2007_ELP.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
 
 # Data for new analyses:
 
-amsel <- read_csv('../additional_data/amsel_2012_SER.csv')
-wisc <- read_csv('../additional_data/wisconsin_2005_norms.csv')
-levin <- read_csv('../additional_data/levin_1991_verb_classes.csv')
+amsel <- read.csv('../additional_data/amsel_2012_SER.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
+wisc <- read.csv('../additional_data/wisconsin_2005_norms.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
+levin <- read.csv('../additional_data/levin_1991_verb_classes.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
+lup_gen <- read.csv('../additional_data/lupyan_generality.csv',
+                stringsAsFactors = FALSE) %>% as_tibble()
 ```
 
 Rename folders and simplify data frames to include only relevant info. Also make Lancaster norm Word column lowercase. Log10 transform SUBTLEX frequencies and contextual diversity:
@@ -75,15 +87,6 @@ AOA <- AOA %>% select(Word, Rating.Mean) %>%
 # Sensory experience ratings:
 
 SER <- select(SER, Word, SER)
-
-# Pexman et al. (2017):
-
-pex <- select(pex, Word, RTclean_mean, ACC, Concrete_rating)
-
-# Hoffman et al. (2012) semantic diversity:
-
-semD <- semD %>% rename(word = `!term`) %>% 
-  select(word, SemD)
 
 # Concreteness ratings:
 
@@ -144,6 +147,10 @@ wisc <- select(wisc, Word, SoundMean, ColorMean, MotionMean) %>%
 ELP <- select(ELP, Word, NMorph) %>% 
   mutate(LogMorph = log10(NMorph),
          Word = str_to_lower(Word))
+
+# Generality data:
+
+lup_gen <- select(lup_gen, word, generality)
 ```
 
 Join them into the main iconicity data file:
@@ -151,8 +158,6 @@ Join them into the main iconicity data file:
 ```{r}
 icon <- left_join(icon, conc, by = c('word' = 'Word'))
 icon <- left_join(icon, SER, by = c('word' = 'Word'))
-icon <- left_join(icon, pex, by = c('word' = 'Word'))
-icon <- left_join(icon, semD, by = c('word' = 'word'))
 icon <- left_join(icon, AOA, by = c('word' = 'Word'))
 icon <- left_join(icon, SUBTL, by = c('word' = 'Word'))
 icon <- left_join(icon, humor, by = c('word' = 'word'))
@@ -162,6 +167,7 @@ icon <- left_join(icon, ARC, by = c('word' = 'word'))
 icon <- left_join(icon, wisc, by = c('word' = 'Word'))
 icon <- left_join(icon, amsel, by = c('word' = 'Concept'))
 icon <- left_join(icon, ELP, by = c('word' = 'Word'))
+icon <- left_join(icon, lup_gen, by = c('word' = 'word'))
 ```
 
 For SUBTLEX, an NA is a true zero:
@@ -189,7 +195,6 @@ icon <- mutate(icon,
                rating_z = z_score(rating),
                conc_z = z_score(conc),
                SER_z = z_score(SER),
-               SemD_z = z_score(SemD),
                AOA_z = z_score(AOA),
                LogFreq_z = z_score(LogFreq),
                LogCD_z = z_score(LogCD),
@@ -218,7 +223,8 @@ icon <- mutate(icon,
                Olf_z = z_score(Olf),
                Vis_z = z_score(Vis),
                Max_z = z_score(Max_perceptual),
-               Excl_z = z_score(Excl))
+               Excl_z = z_score(Excl),
+               generality_z = z_score(generality))
 ```
 
 ## Process part of speech tags
@@ -255,26 +261,6 @@ Check categories:
 table(icon$POS_simple)
 ```
 
-Get a reduced POS data frame without names and unclassifieds. This will be used later to making computing averages easier.
-
-```{r}
-icon_POS <- filter(icon,
-                   !POS_simple %in% c('Unclassified', 'Name'))
-```
-
-Check:
-
-```{r}
-table(icon_POS$POS_simple)
-```
-
-Make function the reference level for analysis below:
-
-```{r}
-icon_POS <- mutate(icon_POS,
-                   POS_simple = factor(POS_simple),
-                   POS_simple = relevel(POS_simple, ref = 'function'))
-```
 
 ## Bayesian regression settings for all analyses
 
@@ -287,7 +273,7 @@ options(mc.cores=parallel::detectCores())
 Weakly informative priors on slope coefficient:
 
 ```{r}
-priors <- c(prior(normal(0, 1), class = b))
+priors <- c(prior(normal(0, 0.5), class = b))
 ```
 
 For MCMC settings (will be used only for models that find it hard to converge):
@@ -313,6 +299,7 @@ icon <- mutate(icon,
                w = (rating_sd - sd_min) / (sd_max - sd_min),
                
                # to invert (so that max SD = lowest weight):
+               
                w = w * -1 + 1,
                
                # renormalize these weights to have mean 1:
@@ -326,322 +313,43 @@ arrange(icon, desc(w))
 arrange(icon, w)
 ```
 
-## Compute models for separate analysis
-
-Regressing iconicity ratings onto morphology:
-
-```{r, warning = FALSE, message = FALSE}
-morph_mdl <- brm(rating | weights(w) ~ NMorph,
-               data = icon,
-               
-               prior = priors,
-               
-               # MCMC settings:
-               seed = 666,
-               cores = 4, init = 0,
-               warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(morph_mdl, file = '../models/morph_mdl.RData')
-```
-
-Compare to logmorph model:
-
-```{r, warning = FALSE, message = FALSE}
-logmorph_mdl <- brm(rating | weights(w) ~ lognmorph_z,
-               data = icon,
-               
-               prior = priors,
-               
-               # MCMC settings:
-               seed = 666,
-               cores = 4, init = 0,
-               warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(logmorph_mdl, file = '../models/logmorph_mdl.RData')
-```
-
-Regressing iconicity ratings onto concreteness ratings:
-
-```{r, warning = FALSE, message = FALSE}
-conc_mdl <- brm(rating | weights(w) ~ conc_z,
-               data = icon,
-               
-               prior = priors,
-               
-               # MCMC settings:
-               seed = 666,
-               cores = 4, init = 0,
-               warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(conc_mdl, file = '../models/conc_mdl.RData')
-```
-
-Regressing iconicity ratings onto sensory experience ratings:
-
-```{r, warning = FALSE, message = FALSE}
-SER_mdl <- brm(rating | weights(w) ~ SER_z,
-               data = icon,
-               
-               prior = priors,
-               
-               # MCMC settings:
-               seed = 666,
-               cores = 4, init = 0,
-               warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(SER_mdl, file = '../models/SER_mdl.RData')
-```
-
-
-Replicating the Sidhu & Pexman (2018) analysis - higher ARC = more similar neighbors (Sidhu p.c.):
-
-```{r, warning = FALSE, message = FALSE}
-lonely_mdl <- brm(rating | weights(w) ~ SER_z * ARC_z,
-               data = icon,
-               
-               prior = priors,
-               
-               # MCMC settings:
-               seed = 666,
-               cores = 4, init = 0,
-               warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(lonely_mdl, file = '../models/lonely_mdl.RData')
-```
-
-
-Regressing iconicity ratings onto age of acquisition ratings:
-
-```{r, warning = FALSE, message = FALSE}
-AOA_mdl <- brm(rating | weights(w) ~ AOA_z,
-               data = icon,
-               
-               prior = priors,
-               
-               # MCMC settings:
-               seed = 666,
-               cores = 4, init = 0,
-               warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(AOA_mdl, file = '../models/AOA_mdl.RData')
-```
-
-
-Regressing iconicity ratings onto frequency and CD controlling for each other:
-
-```{r, warning = FALSE, message = FALSE}
-# Frequency model:
-
-freq_mdl <- brm(rating | weights(w) ~ LogFreq_z,
-                data = icon,
-                
-                prior = priors,
-               
-                # MCMC settings:
-                seed = 666,
-                cores = 4, init = 0,
-                warmup = 2000, iter = 4000, chains = 4)
-
-# Contextual diversity model:
-
-CD_mdl <- brm(rating | weights(w) ~ LogCD_z,
-                data = icon,
-                
-                prior = priors,
-               
-                # MCMC settings:
-                seed = 666,
-                cores = 4, init = 0,
-                warmup = 2000, iter = 4000, chains = 4)
-
-# Contextual diversity and frequency model:
-
-freq_CD_mdl <- brm(rating | weights(w) ~ LogFreq_z + LogCD_z,
-                data = icon,
-                
-                prior = priors,
-               
-                # MCMC settings:
-                seed = 666,
-                cores = 4, init = 0,
-                warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(freq_mdl, file = '../models/freq_mdl.RData')
-save(CD_mdl, file = '../models/CD_mdl.RData')
-save(freq_CD_mdl, file = '../models/freq_CD_mdl.RData')
-```
-
-Check collinearity for frequency and CD:
+Get a reduced POS data frame without names and unclassifieds. This will be used later to making computing averages easier.
 
 ```{r}
-with(icon, cor(LogFreq, LogCD, use = 'complete.obs'))
-
-# Variance inflation factors:
-
-vif(lm(rating ~ LogFreq + LogCD, data = icon))
+icon_POS <- filter(icon,
+                   !POS_simple %in% c('Unclassified', 'Name'))
 ```
 
-Regression iconicity on POS. For the POS model it makes sense to do an omnibus "test" of part-of-speech since it is a predictor with multiple levels. For this we need to build the corresponding null model:
+Check:
 
 ```{r}
-# POS model:
-
-POS_mdl <- brm(rating | weights(w) ~ POS_simple,
-               data = icon_POS,
-               
-               prior = priors,
-
-                # MCMC settings:
-               seed = 666,
-               control = mcmc_controls,
-               cores = 4, init = 0,
-               warmup = 2000, iter = 4000, chains = 4)
-
-# POS null model:
-
-POS_null <- brm(rating | weights(w) ~ 1,
-                data = icon_POS,
-
-                # MCMC settings:
-                seed = 666,
-                cores = 4, init = 0,
-                warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(POS_mdl, file = '../models/POS_mdl.RData')
-save(POS_null, file = '../models/POS_null.RData')
+table(icon_POS$POS_simple)
 ```
 
-The Lupyan & Winter (2018) CD model, but reversed:
+Make function the reference level for analysis below:
 
 ```{r}
-lupyan_CD_mdl <- brm(LogCD ~ rating_z + conc_z + POS_simple,
-                     data = icon_POS,
-
-                     # MCMC settings:
-                     seed = 666,
-                     cores = 4, init = 0,
-                     warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(lupyan_CD_mdl, file = '../models/lupyan_CD_mdl.RData')
+icon_POS <- mutate(icon_POS,
+                   POS_simple = factor(POS_simple),
+                   POS_simple = relevel(POS_simple, ref = 'function'))
 ```
 
-The Lupyan & Winter (2018) semD model:
 
-```{r}
-lupyan_semD_mdl <- brm(SemD ~ rating_z + POS_simple + LogFreq_z,
-                     data = icon_POS,
-
-                     # MCMC settings:
-                     seed = 666,
-                     cores = 4, init = 0,
-                     warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(lupyan_semD_mdl, file = '../models/lupyan_semD_mdl.RData')
-```
-
-The Lupyan & Winter (2018) semD model with concreteness:
-
-```{r}
-lupyan_semD_conc_mdl <- brm(SemD ~ rating_z + POS_simple +
-                              LogFreq_z + conc_z,
-                     data = icon_POS,
-
-                     # MCMC settings:
-                     seed = 666,
-                     cores = 4, init = 0,
-                     warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(lupyan_semD_conc_mdl, file = '../models/lupyan_semD_conc_mdl.RData')
-```
-
-Lupyan & Winter (2018) re-analysis of Pexman et al. (2017) data:
-
-```{r}
-lupyan_pex_mdl <- brm(ACC ~ RTclean_mean + rating_z * conc_rating_z +
-                        LogFreq + POS_simple,
-                      data = icon_POS,
-                      
-                      # MCMC settings:
-                      seed = 666,
-                      cores = 4, init = 0,
-                      warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(lupyan_pex_mdl, file = '../models/lupyan_pex_mdl.RData')
-```
-
-Regressing iconicity ratings onto humor ratings:
-
-```{r, warning = FALSE, message = FALSE}
-humor_mdl <- brm(rating | weights(w) ~ humor_z,
-               data = icon,
-               
-               prior = priors,
-               
-               # MCMC settings:
-               seed = 666,
-               cores = 4, init = 0,
-               warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(humor_mdl, file = '../models/humor_mdl.RData')
-```
-
-Regressing iconicity ratings onto log letter frequencies:
-
-```{r, warning = FALSE, message = FALSE}
-logletter_mdl <- brm(rating | weights(w) ~ logletter_z,
-               data = icon,
-               
-               prior = priors,
-               
-               # MCMC settings:
-               seed = 666,
-               cores = 4, init = 0,
-               warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(logletter_mdl, file = '../models/logletter_mdl.RData')
-```
+## Fit models
 
 Regressing iconicity ratings onto Lancaster sensory modality ratings:
 
 ```{r, warning = FALSE, message = FALSE}
 lanc_mdl <- brm(rating | weights(w) ~ Aud_z + Gus_z + Hap_z +
                    Int_z + Olf_z + Vis_z +
-                  Max_perceptual_z + Excl_z,
+                  Max_z + Excl_z,
                data = icon,
                
                prior = priors,
                
                # MCMC settings:
                seed = 666,
-               cores = 4, init = 0,
+               cores = 4,
                warmup = 2000, iter = 4000, chains = 4)
 
 # Save:
@@ -654,12 +362,10 @@ Check collinearity:
 ```{r}
 vif(lm(rating ~ Aud_z + Gus_z + Hap_z +
                Int_z + Olf_z + Vis_z + Excl_z +
-         Max_perceptual_z, data = icon))
+         Max_z, data = icon))
 ```
 
-High, but not nearly as rampant as in the case of CD and frequency.
-
-Get the 80th percentile subset:
+High, but should be OK given how much data we have. Get the 80th percentile subset:
 
 ```{r}
 sense <- icon %>% filter(!is.na(Max_perceptual)) %>% 
@@ -681,7 +387,7 @@ lanc_80_mdl <- brm(rating | weights(w) ~ Aud_z + Gus_z + Hap_z +
                
                # MCMC settings:
                seed = 666,
-               cores = 4, init = 0,
+               cores = 4,
                warmup = 2000, iter = 4000, chains = 4)
 
 # Save:
@@ -689,38 +395,17 @@ lanc_80_mdl <- brm(rating | weights(w) ~ Aud_z + Gus_z + Hap_z +
 save(lanc_80_mdl, file = '../models/lanc_80_mdl.RData')
 ```
 
-Do a model with interaction with perceptual strength:
-
-```{r, warning = FALSE, message = FALSE}
-lanc_max_mdl <- brm(rating | weights(w) ~ (Aud_z + Gus_z + Hap_z +
-                   Int_z + Olf_z + Vis_z) * Max_z,
-               data = icon,
-               
-               prior = priors,
-               
-               # MCMC settings:
-               seed = 666,
-               cores = 4, init = 0,
-               warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(lanc_max_mdl, file = '../models/lanc_max_mdl.RData')
-```
-
-## Combined model
-
-Get rid of NAs to check how much overlap there is between all of these:
+Big model that combines everything. Get rid of NAs to check how much overlap there is between all of these:
 
 ```{r}
 icon_red <- filter(icon_POS,
                    !is.na(SER_z),
-                   !is.na(SemD_z),
                    !is.na(AOA_z),
-                   !is.na(LogCD_z),
+                   !is.na(LogFreq_z),
                    !is.na(humor_z),
                    !is.na(logletter_z),
-                   !is.na(NMorph))
+                   !is.na(NMorph),
+                   !is.na(POS_simple))
 ```
 
 Check:
@@ -734,23 +419,20 @@ Check concreteness reduced model as alternative:
 ```{r}
 icon_conc <- filter(icon_POS,
                     !is.na(conc_z),
-                    !is.na(SemD_z),
                     !is.na(AOA_z),
                     !is.na(LogFreq_z),
                     !is.na(humor_z),
                     !is.na(logletter_z),
-                    !is.na(NMorph))
+                    !is.na(NMorph),
+                    !is.na(POS_simple))
 ```
 
 Put it all into one model:
 
 ```{r, warning = FALSE, message = FALSE}
-all_mdl <- brm(rating | weights(w) ~ SER_z + AOA_z + LogCD_z + 
+all_mdl <- brm(rating | weights(w) ~ SER_z + AOA_z + LogFreq_z + 
                  humor_z + POS_simple + logletter_z + ARC_z +
-                 
-                 # Control:
-                 
-                 NMorph,
+                 SER_z:ARC_z,
                
                data = icon_red,
                
@@ -759,15 +441,11 @@ all_mdl <- brm(rating | weights(w) ~ SER_z + AOA_z + LogCD_z +
                # MCMC settings:
                seed = 666,
                control = mcmc_controls,
-               cores = 4, init = 0,
+               cores = 4,
                warmup = 2000, iter = 4000, chains = 4)
 
-all_mdl_no_POS <- brm(rating | weights(w) ~ SER_z + AOA_z + LogCD_z + 
-                 humor_z + logletter_z + ARC_z +
-                 
-                 # Control:
-                 
-                 NMorph,
+all_mdl_no_POS <- brm(rating | weights(w) ~ SER_z + AOA_z + LogFreq_z + 
+                 humor_z + logletter_z + ARC_z,
                
                data = icon_red,
                
@@ -776,7 +454,7 @@ all_mdl_no_POS <- brm(rating | weights(w) ~ SER_z + AOA_z + LogCD_z +
                # MCMC settings:
                seed = 666,
                control = mcmc_controls,
-               cores = 4, init = 0,
+               cores = 4,
                warmup = 2000, iter = 4000, chains = 4)
 
 # Save:
@@ -785,15 +463,23 @@ save(all_mdl, file = '../models/all_mdl.RData')
 save(all_mdl_no_POS, file = '../models/all_mdl_no_POS.RData')
 ```
 
+Get the LOO-CV:
+
+```{r}
+all_loo <- loo(all_mdl)
+all_no_POS_loo <- loo(all_mdl_no_POS)
+
+# Comparison and save:
+
+loo_comp <- loo_compare(all_no_POS_loo, all_loo)
+save(loo_comp, file = '../models/all_loo_compare.RData')
+```
+
 Put it all into one model with concreteness instead:
 
 ```{r, warning = FALSE, message = FALSE}
 all_conc_mdl <- brm(rating | weights(w) ~ conc_z + AOA_z + LogCD_z + 
-                 humor_z + POS_simple + logletter_z + ARC_z +
-                 
-                 # Control:
-                 
-                 NMorph,
+                 humor_z + POS_simple + logletter_z + ARC_z,
                
                data = icon_conc,
                
@@ -802,79 +488,38 @@ all_conc_mdl <- brm(rating | weights(w) ~ conc_z + AOA_z + LogCD_z +
                # MCMC settings:
                seed = 666,
                control = mcmc_controls,
-               cores = 4, init = 0,
+               cores = 4,
                warmup = 2000, iter = 4000, chains = 4)
+# Save:
 
-all_conc_mdl_no_POS <- brm(rating | weights(w) ~ conc_z + AOA_z +
-                             LogCD_z + 
-                 humor_z + logletter_z + ARC_z +
-                 
-                 # Control:
-                 
-                 NMorph,
+save(all_conc_mdl, file = '../models/all_conc_mdl.RData')
+```
+
+Put it all into one model without regression weights:
+
+```{r, warning = FALSE, message = FALSE}
+noweight_mdl <- brm(rating ~ SER_z + AOA_z + LogCD_z + 
+                 humor_z + POS_simple + logletter_z + ARC_z +
+                 SER_z:ARC_z,
                
-               data = icon_conc,
+               data = icon_red,
                
                prior = priors,
                
                # MCMC settings:
                seed = 666,
                control = mcmc_controls,
-               cores = 4, init = 0,
+               cores = 4,
                warmup = 2000, iter = 4000, chains = 4)
 
 # Save:
 
-save(all_conc_mdl, file = '../models/all_conc_mdl.RData')
-save(all_conc_mdl_no_POS, file = '../models/all_conc_mdl_no_POS.RData')
+save(noweight_mdl, file = '../models/noweight_mdl.RData')
 ```
 
 ## New analyses (new data):
 
-Perform analysis of Amsel et al. (2012) and Wisconsin (2005) data.
-
-First Amsel (2012):
-
-```{r}
-amsel_mdl <- brm(rating | weights(w) ~ amsel_color_z + amsel_taste_z +
-                   amsel_sound_z + amsel_smell_z + amsel_motion_z,
-               
-               data = icon,
-               
-               prior = priors,
-               
-               # MCMC settings:
-               seed = 666,
-               control = mcmc_controls,
-               cores = 4, init = 0,
-               warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(amsel_mdl, file = '../models/amsel_mdl.RData')
-```
-
-Second Wisconsin (2005):
-
-```{r}
-wisc_mdl <- brm(rating | weights(w) ~ wisc_sound_z + wisc_color_z + wisc_motion_z,
-               
-               data = icon,
-               
-               prior = priors,
-               
-               # MCMC settings:
-               seed = 666,
-               control = mcmc_controls,
-               cores = 4, init = 0,
-               warmup = 2000, iter = 4000, chains = 4)
-
-# Save:
-
-save(wisc_mdl, file = '../models/wisc_mdl.RData')
-```
-
-Third, Beth Levin verb classes. First merge:
+Beth Levin verb classes. First merge:
 
 ```{r}
 levin <- left_join(levin, icon, by = c('verb' = 'word'))
@@ -883,32 +528,42 @@ levin <- left_join(levin, icon, by = c('verb' = 'word'))
 Then model:
 
 ```{r}
-levin_mdl <- brm(rating | weights(w) ~ category,
-               
-               data = levin,
+levin_mdl <- brm(rating | weights(w) ~ category + (1|verb),
+               data = filter(levin, !is.na(rating)),
                
                prior = priors,
                
                # MCMC settings:
                seed = 666,
                control = mcmc_controls,
-               cores = 4, init = 0,
+               cores = 4,
                warmup = 2000, iter = 4000, chains = 4)
 
 levin_null_mdl <- brm(rating | weights(w) ~ 1,
-               
-               data = levin,
+               data = filter(levin, !is.na(rating)),
                
                # MCMC settings:
                seed = 666,
                control = mcmc_controls,
-               cores = 4, init = 0,
+               cores = 4,
                warmup = 2000, iter = 4000, chains = 4)
 
 # Save:
 
 save(levin_mdl, file = '../models/levin_mdl.RData')
 save(levin_null_mdl, file = '../models/levin_null_mdl.RData')
+```
+
+Perform comparison:
+
+```{r}
+levin_loo <- loo(levin_mdl)
+levin_null_loo <- loo(levin_null_mdl)
+
+# compare:
+
+levin_loo_compare <- loo_compare(levin_loo, levin_null_loo)
+save(levin_loo_compare, file = '../models/levin_loo_compare.RData')
 ```
 
 This completes this analysis.

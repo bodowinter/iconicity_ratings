@@ -33,22 +33,22 @@ df <- read_csv('../ratings/combined_byWord_and_subject_anonymized.csv',
 Anonymize create identifiers for each subject. This will be included in the script but it is essentially ineffectful in this case (since only the anonymized data will be shared in the repo). So this code chunk is set to eval = FALSE in the knitted document that will be published.
 
 ```{r, eval = FALSE}
-# Table with new ids:
-
-new_ids <- tibble(subj_code = unique(df$subj_code),
-                  sub_ID = 1:length(unique(df$subj_code)))
-
-# Override old IDs:
-
-df <- left_join(df, new_ids) %>%
-  select(-subj_code) %>% 
-  rename(subj_code = sub_ID) %>% 
-  select(row_id, subj_code, batch_num:rt)
-
-# Override file:
-
-write_csv(df,
-          '../ratings/combined_byWord_and_subject_anonymized.csv')
+# # Table with new ids:
+# 
+# new_ids <- tibble(subj_code = unique(df$subj_code),
+#                   sub_ID = 1:length(unique(df$subj_code)))
+# 
+# # Override old IDs:
+# 
+# df <- left_join(df, new_ids) %>%
+#   select(-subj_code) %>%
+#   rename(subj_code = sub_ID) %>%
+#   select(row_id, subj_code, batch_num:rt)
+# 
+# # Override file:
+# 
+# write_csv(df,
+#           '../ratings/combined_byWord_and_subject_anonymized.csv')
 ```
 
 Print for reproducibility:
@@ -80,7 +80,7 @@ Check total number of participants:
 df %>% count(subj_code) %>% nrow()
 ```
 
-934 participants.
+1271 participants.
 
 ## Check RT distribution
 
@@ -133,14 +133,20 @@ filter(df, rt < 100) %>% count(subj_code, sort = TRUE)
 filter(df, rt < 500) %>% count(subj_code, sort = TRUE)
 ```
 
-There definitely seems to be a few free riders here. For example, subject "69102" has 108 data points below 500 ms. Let's just check whether their data makes any sense:
+There definitely seems to be a few free riders here. For example, subject "S282" has 108 data points below 500 ms. Let's just check whether their data makes any sense:
 
 ```{r}
-filter(df, subj_code == '69102') %>% arrange(desc(key))
-filter(df, subj_code == '69102') %>% arrange(key)
+filter(df, subj_code == 'S282') %>% arrange(desc(key))
+filter(df, subj_code == 'S282') %>% arrange(key)
 ```
 
-Hard to tell, but I could see it making sense.
+Hard to tell from this, but then, this clearly shows what happened:
+
+```{r}
+filter(df, subj_code == 'S282') %>% arrange(key) %>% pull(rt)
+```
+
+They basically just clicked themselves through the experiment, except for the beginning and end.
 
 How many are below 100ms? Below 200ms? 300ms? 500ms?
 
@@ -160,17 +166,17 @@ Even 500ms is less than 2.4% of the data. I think this is worth excluding:
 df <- filter(df, rt > 500)
 ```
 
-Now let's look at the upper range. How many really high values are there? Let's look at larger than 10s.
+Now let's look at the upper range. How many really high values are there? Let's look at larger than 15s.
 
 ```{r}
-filter(df, rt > 10000)
-filter(df, rt > 10000) %>% nrow() / nrow(df) # proportion
+filter(df, rt > 15000)
+filter(df, rt > 15000) %>% nrow() / nrow(df) # proportion
 ```
 
 That's 3% of the data. I think we can take 10s as a sensible cut-off value without loosing too much data:
 
 ```{r}
-# Exclusion 3... based on rt > 10s
+# Exclusion 3... based on rt > 15s
 
 df <- filter(df, rt < 10000)
 ```
@@ -182,7 +188,7 @@ baseline - nrow(df)
 (baseline - nrow(df)) / nrow(df)
 ```
 
-6% data loss, a total of 3516 data points.
+2.4% data loss, a total of 3516 data points.
 
 Set N after RT exclusion as baseline for reporting:
 
@@ -213,7 +219,7 @@ range(df_sub$rt)
 Visualize the overall RT distribution:
 
 ```{r, fig.width = 8, fig.height = 6}
-df %>% ggplot(aes(x = rt)) +
+df %>% ggplot(aes(x = log(rt))) +
   geom_density(fill = 'steelblue', alpha = 0.5) +
   theme_minimal()
 ```
@@ -239,7 +245,7 @@ N_resp <- df %>% count(subj_code, key, sort = TRUE)
 N_resp
 ```
 
-Subject "70393" for example had 137 times key = 7. That's a bit suspicious. Let's merge this with the per-subject-N to see the proportion of responses that are the same.
+Subject "S468" for example had 137 times key = 7. That's a bit suspicious. Let's merge this with the per-subject-N to see the proportion of responses that are the same.
 
 ```{r}
 N_resp <- left_join(N_resp, N_sub) %>% 
@@ -272,7 +278,7 @@ N_resp %>% ggplot(aes(x = prop, y = rt)) +
   theme_minimal()
 ```
 
-There is a lot of variation in response speed for people with very mixed proportions (to the left). Not a lot of variation for people with very high proportion though (a striking absence of slow responders here).
+There is a lot of variation in response speed for people with very mixed proportions (to the left). Not a lot of variation for people with very high proportion though (a striking absence of slow responders here). This suggests that the people with high proportions of the same response just click themselves through the experiment.
 
 If we set 80% as a cut-off value (more than two thirds are the same), this would not be a lot of data loss, and it's clearly the tail end of the distribution.
 
@@ -489,11 +495,21 @@ new_baseline - nrow(df)
 1 - (nrow(df) / new_baseline)
 ```
 
-Reset baseline:
+Export the raw ratings — and we need to get of the NA values:
 
 ```{r}
-new_baseline <- nrow(df)
+write_csv(filter(df, !is.na(key)),
+          '../ratings/iconicity_ratings_raw.csv')
 ```
+
+How much total exclusion was there?
+
+```{r}
+baseline - new_baseline
+1 - (new_baseline / baseline)
+```
+
+
 
 ## Compute item-based averages and SDs
 
