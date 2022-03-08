@@ -57,16 +57,6 @@ humor <- read.csv('../additional_data/engelthaler_hills_2018_humor.csv',
                 stringsAsFactors = FALSE) %>% as_tibble()
 ding <- read.csv('../additional_data/dingemanse_thompson_2020.csv',
                 stringsAsFactors = FALSE) %>% as_tibble()
-
-# Data for controlling morphology:
-
-ELP <- read.csv('../additional_data/balota_2007_ELP.csv',
-                stringsAsFactors = FALSE) %>% as_tibble()
-
-# Data for new analyses:
-
-levin <- read.csv('../additional_data/levin_1991_verb_classes.csv',
-                stringsAsFactors = FALSE) %>% as_tibble()
 ```
 
 Rename folders and simplify data frames to include only relevant info. Also make Lancaster norm Word column lowercase. Log10 transform SUBTLEX frequencies and contextual diversity:
@@ -81,28 +71,12 @@ AOA <- AOA %>% select(Word, Rating.Mean) %>%
 
 SER <- select(SER, Word, SER)
 
-# Lancaster sensorimotor norms:
-
-lanc <- lanc %>%
-  mutate(Word = str_to_lower(Word)) %>% 
-  select(Word:Visual.mean, Dominant.perceptual,
-         Max_strength.perceptual) %>% 
-  rename(Aud = Auditory.mean,
-         Gus = Gustatory.mean,
-         Hap = Haptic.mean,
-         Int = Interoceptive.mean,
-         Olf = Olfactory.mean,
-         Vis = Visual.mean,
-         Mod = Dominant.perceptual,
-         Max_perceptual = Max_strength.perceptual)
-
 # Frequency, contextual diversity, and part-of-speech:
 
 SUBTL <- SUBTL %>% 
   rename(Freq = FREQcount,
-         CD = CDcount,
          POS = Dom_PoS_SUBTLEX) %>% 
-  select(Word, Freq, CD, POS)
+  select(Word, Freq, POS)
 
 # Playfulness:
   
@@ -112,12 +86,6 @@ humor <- select(humor, word, mean) %>%
 # Dingemanse & Thompson (2020) data:
 
 ding <- select(ding, logletterfreq, word, ico, ico_imputed, ico_imputed_monomorph)
-
-# ELP data:
-
-ELP <- select(ELP, Word, NMorph) %>% 
-  mutate(LogMorph = log10(NMorph),
-         Word = str_to_lower(Word))
 ```
 
 Join them into the main iconicity data file:
@@ -129,23 +97,20 @@ icon <- left_join(icon, SUBTL, by = c('word' = 'Word'))
 icon <- left_join(icon, humor, by = c('word' = 'word'))
 icon <- left_join(icon, lanc, by = c('word' = 'Word'))
 icon <- left_join(icon, ding, by = c('word' = 'word'))
-icon <- left_join(icon, ELP, by = c('word' = 'Word'))
 ```
 
 For SUBTLEX, an NA is a true zero:
 
 ```{r}
 icon <- mutate(icon,
-               Freq = ifelse(is.na(Freq), 0, Freq),
-               CD = ifelse(is.na(CD), 0, CD))
+               Freq = ifelse(is.na(Freq), 0, Freq))
 ```
 
 Log-transform the frequencies:
 
 ```{r}
 icon <- mutate(icon,
-               LogFreq = log10(Freq + 1),
-               LogCD = log10(CD + 1))
+               LogFreq = log10(Freq + 1))
 ```
 
 Z-score all variables:
@@ -157,18 +122,8 @@ icon <- mutate(icon,
                SER_z = z_score(SER),
                AOA_z = z_score(AOA),
                LogFreq_z = z_score(LogFreq),
-               LogCD_z = z_score(LogCD),
                humor_z = z_score(humor),
-               logletter_z = z_score(logletterfreq),
-               lognmorph_z = z_score(LogMorph),
-               
-               # Lancaster norms:
-               Aud_z = z_score(Aud),
-               Gus_z = z_score(Gus),
-               Hap_z = z_score(Hap),
-               Int_z = z_score(Int),
-               Olf_z = z_score(Olf),
-               Vis_z = z_score(Vis))
+               logletter_z = z_score(logletterfreq))
 ```
 
 ## Process part of speech tags
@@ -223,7 +178,6 @@ How many data points?
 filter(icon, !is.na(SER)) %>% nrow()
 filter(icon, !is.na(AOA)) %>% nrow()
 filter(icon, !is.na(humor)) %>% nrow()
-filter(icon, !is.na(Aud_z)) %>% nrow()
 ```
 
 
@@ -238,83 +192,13 @@ icon_POS %>% group_by(POS_simple) %>%
   arrange(desc(M))
 ```
 
-Check the dominant perceptual modality:
-
-```{r}
-icon %>% group_by(Mod) %>% 
-  summarize(M = mean(rating),
-            SD = sd(rating)) %>% 
-  arrange(desc(M))
-```
-
-Check the dominant perceptual modality only for very perceptual words. First, get a subset:
-
-```{r}
-sense <- icon %>% filter(!is.na(Max_perceptual)) %>% 
-  filter(Max_perceptual > quantile(Max_perceptual, 0.8))
-
-# How many?
-
-nrow(sense)
-```
-
-Then re-do the averages:
-
-```{r}
-sense %>% 
-  group_by(Mod) %>% 
-  summarize(M = mean(rating),
-            SD = sd(rating)) %>% 
-  arrange(desc(M))
-```
-
-Check Levin verb classes:
-
-```{r}
-levin <- left_join(levin, icon, by = c('verb' = 'word'))
-
-# Get counts:
-
-levin_counts <- levin %>% count(category)
-
-# Averages:
-
-levin_avg <- levin %>% group_by(category) %>% 
-  summarize(M = mean(rating, na.rm = TRUE),
-            SD = sd(rating, na.rm = TRUE)) %>% 
-  arrange(desc(M))
-
-# Put counts in there:
-
-levin_avg <- left_join(levin_avg, levin_counts)
-
-# Show:
-
-levin_avg
-```
-
-For comparison, the least iconic classes:
-
-```{r}
-arrange(levin_avg, M)
-```
-
-Print the table:
-
-```{r}
-levin_avg <- mutate(levin_avg, M = round(M, 2),
-                    SD = round(SD, 2))
-write_csv(levin_avg, '../tables/levin_averages.csv')
-```
-
-
 ## Correlation table
 
 Get the variables of interest:
 
 ```{r}
-these_vars <- c("rating", "SER", "AOA", "LogFreq", "LogCD",
-                "logletterfreq", "humor", "NMorph")
+these_vars <- c("rating", "SER", "AOA", "LogFreq",
+                "logletterfreq", "humor")
 ```
 
 Get these vars and perform pairwise correlations:
@@ -334,25 +218,6 @@ all_corrs
 write_csv(as.data.frame(all_corrs), '../tables/all_correlations.csv')
 ```
 
-Perform them again with subset of monomorphemics:
-
-```{r}
-# Get subset:
-
-mono <- icon %>% filter(NMorph == 1)
-mono <- mono[, these_vars]
-mono <- mono[, -ncol(mono)]
-
-# Correlate and round:
-
-mono_corrs <- round(cor(df_vars, use = 'complete.obs'), 2)
-
-# Print:
-
-mono_corrs
-```
-
-
 ## Interpret models
 
 Load all models from the models folder:
@@ -368,64 +233,19 @@ for (i in seq_along(all_models)) {
 First, let's look at all r-squareds:
 
 ```{r}
-# Sensory experience and modality:
-
-bayes_R2(lanc_mdl)
-bayes_R2(lanc_80_mdl)
-bayes_R2(lanc_max_mdl)
-
-# Lupyan & Winter (2018) models:
-
-bayes_R2(lupyan_pex_mdl)
-
 # FUll model:
 
 bayes_R2(all_mdl)
 bayes_R2(all_mdl_no_POS)
 bayes_R2(noweight_mdl)
-bayes_R2(all_conc_mdl)
-
-# Generality model:
-
-bayes_R2(gen_mdl)
 ```
 
 Next, let's look at the model summaries:
 
 ```{r}
-# Morphology control variables:
-
-summary(morph_mdl)
-summary(logmorph_mdl)
-
-# Sensory experience and modality:
-
-summary(SER_mdl)
-summary(lanc_mdl)
-summary(lanc_80_mdl)
-summary(lanc_max_mdl)
-
-# Lupyan & Winter (2018) models:
-
-summary(lupyan_CD_mdl)
-summary(lupyan_semD_mdl)
-summary(lupyan_semD_conc_mdl)
-summary(lupyan_pex_mdl)
-
 # FUll model:
 
-summary(all_mdl)
-summary(all_mdl_no_POS)
-
-# Generality model
-
-summary(gen_mdl)
-```
-
-Then again, full model with concreteness instead:
-
-```{r}
-summary(all_conc_mdl)
+all_mdl
 ```
 
 ## Make a coefficient plot of the main model
@@ -457,8 +277,8 @@ fixefs <- mutate(fixefs,
                                    'humor ratings', variable),
                  variable = ifelse(variable == 'LogFreq',
                                    'log frequency', variable),
-                 variable = ifelse(variable == 'LogCD',
-                                   'log contextual diversity', variable),
+                 variable = ifelse(variable == 'conc',
+                                   'concreteness ratings', variable),
                  variable = ifelse(variable == 'SER',
                                    'sensory experience ratings (SER)', variable),
                  variable = ifelse(variable == 'AOA',
@@ -467,8 +287,6 @@ fixefs <- mutate(fixefs,
                                    'ARC (semantic neighborhood density)', variable),
                  variable = ifelse(variable == 'SER:ARC_z',
                                    'ARC * SER interaction', variable),
-                 variable = ifelse(variable == 'NMorph',
-                                   'number of morphemes', variable),
                  variable = ifelse(variable == 'logletter',
                                    'log letter frequency', variable))
 
@@ -521,7 +339,7 @@ Create the predictions for POS categories:
 ```{r}
 # Extract posteriors
 
-POS_posts <- posterior_samples(POS_mdl)
+POS_posts <- posterior_samples(all_mdl)
 
 # Add posterior samples of the respective coefficients
 
@@ -601,140 +419,4 @@ ggsave(plot = POS_p, filename = '../figures/POS_preds.pdf',
        width = 7, height = 7)
 ```
 
-Make a coefficient plot of the sensory modality effects. First, get the coefficients of the 80th percentile model:
-
-```{r}
-# Get coefficients:
-
-lancs <- as_tibble(fixef(lanc_80_mdl)[-1, ]) # minus intercept
-
-# Rename variables:
-
-lancs$variable <- c('auditory strength',
-                    'gustatory strength',
-                    'haptic strength',
-                    'interoceptive strength',
-                    'olfactory strength',
-                    'visual strength',
-                    # 'max perceptual strength',
-                    'modality exclusivity')
-
-# Show:
-
-lancs
-```
-
-Then make the plot:
-
-```{r, fig.width = 5, fig.height = 8}
-# Setup the plot:
-
-lancs_p <- lancs %>%
-  ggplot(aes(x = reorder(variable, Estimate), y = Estimate,
-             ymin = Q2.5, ymax = Q97.5))
-
-# Add geoms:
-
-lancs_p <- lancs_p + 
-  geom_point(shape = 15, size = 2) +
-  geom_hline(aes(yintercept = 0), linetype = 2) + 
-  geom_errorbar(width = 0.1)
-
-# Add cosmetics:
-
-lancs_p <- lancs_p +
-  ylab('Standardized coefficient') +
-  coord_flip() +
-  theme_minimal() +
-  theme(axis.title.y = element_blank(),
-        axis.title.x = element_text(margin = margin(t = 15, b = 0,
-                                                    r = 0, l = 0),
-                                    face = 'bold',
-                                    size = 16),
-        axis.text.y = element_text(face = 'bold', size = 14))
-
-# Show plot:
-
-lancs_p
-
-# Save:
-
-ggsave(plot = lancs_p, filename = '../figures/lancs_80_coefficients.pdf',
-       width = 8, height = 6)
-```
-
-Next get the coefficients of the general model (no exclusions):
-
-```{r}
-# Get coefficients:
-
-lancs <- as_tibble(fixef(lanc_mdl)[-1, ]) # minus intercept
-
-# Rename variables:
-
-lancs$variable <- c('auditory strength',
-                    'gustatory strength',
-                    'haptic strength',
-                    'interoceptive strength',
-                    'olfactory strength',
-                    'visual strength',
-                    'max perceptual strength',
-                    'modality exclusivity')
-
-# Show:
-
-lancs
-```
-
-Then make the plot:
-
-```{r, fig.width = 5, fig.height = 8}
-# Setup the plot:
-
-lancs_p <- lancs %>%
-  ggplot(aes(x = reorder(variable, Estimate), y = Estimate,
-             ymin = Q2.5, ymax = Q97.5))
-
-# Add geoms:
-
-lancs_p <- lancs_p + 
-  geom_point(shape = 15, size = 2) +
-  geom_hline(aes(yintercept = 0), linetype = 2) + 
-  geom_errorbar(width = 0.1)
-
-# Add cosmetics:
-
-lancs_p <- lancs_p +
-  ylab('Standardized coefficient') +
-  coord_flip() +
-  theme_minimal() +
-  theme(axis.title.y = element_blank(),
-        axis.title.x = element_text(margin = margin(t = 15, b = 0,
-                                                    r = 0, l = 0),
-                                    face = 'bold',
-                                    size = 16),
-        axis.text.y = element_text(face = 'bold', size = 14))
-
-# Show plot:
-
-lancs_p
-
-# Save:
-
-ggsave(plot = lancs_p, filename = '../figures/lancs_coefficients.pdf',
-       width = 8, height = 6)
-```
-
-## Look at Beth Levin verb classes (new results)
-
-First, check Bayes R2:
-
-```{r}
-bayes_R2(levin_mdl)
-```
-
-Check the loo compare for the model:
-
-```{r}
-levin_loo_compare
-```
+This completes this analysis.

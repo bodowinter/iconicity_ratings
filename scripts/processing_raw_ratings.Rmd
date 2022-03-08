@@ -17,7 +17,7 @@ Load packages:
 library(tidyverse)
 ```
 
-Load data. We need to handspecify the column parsing because otherwise a lot of subjects will be put to NA because the first few rows are integer and read_csv() will interpret those rows as integers and set all characters to NA.
+Load data. We need to hand-specify the column parsing because otherwise a lot of subjects will be put to NA because the first few rows are integer and `read_csv()` will interpret those rows as integers and set all characters to NA.
 
 ```{r, warning = FALSE, message = FALSE}
 df <- read_csv('../ratings/combined_byWord_and_subject_anonymized.csv',
@@ -84,6 +84,16 @@ df %>% count(subj_code) %>% nrow()
 
 ## Check RT distribution
 
+Establish baseline for RT exclusions. This will be used for computing N of trials lost:
+
+```{r}
+baseline <- nrow(df)
+
+# Show:
+
+baseline
+```
+
 Are there NAs?
 
 ```{r}
@@ -97,16 +107,6 @@ Presumably the script or browser crashed here? Exclude these:
 
 df <- filter(df,
              !is.na(rt))
-```
-
-The first two exclusions were based on missing data (probably technical errors) — these are non-substantive exclusions. We won't count them to our baseline to report the % data loss in our paper. So we'll set the new baseline to this N of tokens:
-
-```{r}
-baseline <- nrow(df)
-
-# Show:
-
-baseline
 ```
 
 Mean and SD:
@@ -163,7 +163,7 @@ Even 500ms is less than 2.4% of the data. I think this is worth excluding:
 ```{r}
 # Exclusion 2... based on rt < 500ms
 
-df <- filter(df, rt > 500)
+df <- filter(df, rt >= 500)
 ```
 
 Now let's look at the upper range. How many really high values are there? Let's look at larger than 15s.
@@ -178,7 +178,7 @@ That's 3% of the data. I think we can take 10s as a sensible cut-off value witho
 ```{r}
 # Exclusion 3... based on rt > 15s
 
-df <- filter(df, rt < 10000)
+df <- filter(df, rt <= 15000)
 ```
 
 How much exclusion purely based on RT?
@@ -188,7 +188,7 @@ baseline - nrow(df)
 (baseline - nrow(df)) / nrow(df)
 ```
 
-2.4% data loss, a total of 3516 data points.
+4% data loss, a total of 6569 data points.
 
 Set N after RT exclusion as baseline for reporting:
 
@@ -484,9 +484,11 @@ Exclude those:
 ```{r}
 # Exclusion 6... based on low word knowledge
 
-df <- filter(df,
-             !(word %in% bad_words))
+# df <- filter(df,
+#              !(word %in% bad_words))
 ```
+
+Not applied in the end!
 
 How much exclusion?
 
@@ -508,8 +510,6 @@ How much total exclusion was there?
 baseline - new_baseline
 1 - (new_baseline / baseline)
 ```
-
-
 
 ## Compute item-based averages and SDs
 
@@ -549,9 +549,22 @@ What's with those low ones? They were all known, but why do we have so few data 
 arrange(icon, n_ratings)
 ```
 
+How many will be excluded if we use the >= 10 ratings criterion?
+
+```{r}
+nrow(filter(icon, n < 10))
+```
+
+Get those for which we have at least 10 ratings:
+
+```{r}
+icon <- filter(icon, n >= 10)
+```
+
 Save the data:
 
 ```{r}
 write_csv(icon, '../ratings/iconicity_ratings.csv')
 ```
 
+This completes this script.
