@@ -13,7 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 This markdown performs a number of different analysis that serve to demonstrate how the iconicity ratings correlate with other psycholinguistic norms that have been collected. In addition, we produce some plots of the data to give an overview of the ratings.
 
-The models are computed in the file "Bayesian_models.Rmd" and will be loaded in and interpreted here.
+The models are computed in the file `Bayesian_models.Rmd` and will be loaded in and interpreted here.
 
 ## Data and package loading
 
@@ -192,6 +192,14 @@ icon_POS %>% group_by(POS_simple) %>%
   arrange(desc(M))
 ```
 
+Count each one for Table 3.
+
+```{r}
+icon_POS %>%
+  count(POS_simple)
+```
+
+
 ## Correlation table
 
 Get the variables of interest:
@@ -246,6 +254,12 @@ Next, let's look at the model summaries:
 # FUll model:
 
 all_mdl
+```
+
+Assess priors:
+
+```{r}
+prior_summary(all_mdl)
 ```
 
 ## Make a coefficient plot of the main model

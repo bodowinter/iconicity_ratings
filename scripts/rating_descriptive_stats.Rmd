@@ -37,7 +37,7 @@ Load iconicity ratings:
 ```{r, warning = FALSE, message = FALSE}
 # By-word averages:
 
-icon <- read.csv('../ratings/iconicity_ratings_averages.csv',
+icon <- read.csv('../ratings/iconicity_ratings.csv',
                  stringsAsFactors = FALSE) %>% as_tibble()
 ```
 
@@ -136,16 +136,19 @@ icon_p <- icon_p +
                 args = list(mean = mean(icon$rating),
                             sd = sd(icon$rating)),
                 col = 'black',
-                linetype = 2,
+                linetype = 'dashed',
                 size = 1.5)
 
 # Add cosmetics:
 
 icon_p <- icon_p + 
-  ylim(0, 0.5) + 
+  scale_y_continuous(expand = c(0, 0),
+                     breaks = seq(0, 0.5, 0.1),
+                     limits = c(0, 0.5)) +
+  scale_x_continuous(breaks = 1:7) +
   xlab('Iconicity rating') +
   ylab('Density') +
-  theme_minimal() +
+  theme_classic() +
   
   # Axis labels:
   theme(axis.title.x = element_text(face = 'bold',
@@ -233,7 +236,8 @@ pollock_p <- icon %>%
 pollock_p <- pollock_p + 
   xlab('Mean') +
   ylab('Standard deviation') +
-  theme_minimal() +
+  scale_x_continuous(breaks = 1:7) +
+  theme_classic() +
   
   # Axis labels:
   theme(axis.title.x = element_text(face = 'bold',
@@ -344,7 +348,7 @@ with(icon, cor.test(rating, E2_spoken, use = 'complete.obs'))
 with(icon, cor.test(rating, E3_guessing, use = 'complete.obs'))
 ```
 
-
+This completes this analysis.
 
 
 
