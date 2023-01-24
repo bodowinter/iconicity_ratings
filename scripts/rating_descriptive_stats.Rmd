@@ -1,5 +1,5 @@
 ---
-title: "Descriptive statistics of norms"
+title: "Descriptive statistics of iconicity ratings"
 author: "Bodo Winter"
 date: "03/09/2021"
 output: html_document
@@ -37,8 +37,7 @@ Load iconicity ratings:
 ```{r, warning = FALSE, message = FALSE}
 # By-word averages:
 
-icon <- read.csv('../ratings/iconicity_ratings.csv',
-                 stringsAsFactors = FALSE) %>% as_tibble()
+icon <- read_csv('../ratings/iconicity_ratings_cleaned.csv')
 ```
 
 For comparison, get the imputed data from Dingemanse & Thompson (2020):

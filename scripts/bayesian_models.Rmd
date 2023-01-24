@@ -1,5 +1,6 @@
 ---
-title: "Bayesian models - reduced"
+title: "Bayesian models"
+author: Bodo Winter
 output: html_document
 ---
 
@@ -9,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Introduction
 
-This markdown computes the Bayesian models that underlie the main analysis file "substantive_analysis.Rmd".
+This markdown computes the Bayesian models that underlie the main analysis file `substantive_analysis.Rmd`.
 
 ## Data and package loading
 
@@ -33,29 +34,19 @@ R.Version()$version.string
 Load iconicity ratings:
 
 ```{r, warning = FALSE, message = FALSE}
-icon <- read.csv('../ratings/iconicity_ratings.csv',
-                stringsAsFactors = FALSE) %>% as_tibble()
+icon <- read_csv('../ratings/iconicity_ratings_cleaned.csv')
 ```
 
-Load additional datasets:
+Load additional data sets:
 
 ```{r, warning = FALSE, message = FALSE}
-# Data for replications:
-
-SER <- read.csv('../additional_data/juhasz_yap_2013_SER.csv',
-                stringsAsFactors = FALSE) %>% as_tibble()
-AOA <- read.csv('../additional_data/kuperman_2012_AOA.csv',
-                stringsAsFactors = FALSE) %>% as_tibble()
-SUBTL <- read.csv('../additional_data/brysbaert_2012_SUBTLEX_POS.csv',
-                stringsAsFactors = FALSE) %>% as_tibble()
-humor <- read.csv('../additional_data/engelthaler_hills_2018_humor.csv',
-                stringsAsFactors = FALSE) %>% as_tibble()
-ding <- read.csv('../additional_data/dingemanse_thompson_2020.csv',
-                stringsAsFactors = FALSE) %>% as_tibble()
-ARC <- read.csv('../additional_data/shaoul_westbury_2010_ARC.csv',
-                stringsAsFactors = FALSE) %>% as_tibble()
-conc <- read.csv('../additional_data/brysbaert_2014_concreteness.csv',
-                stringsAsFactors = FALSE) %>% as_tibble()
+SER <- read_csv('../additional_data/juhasz_yap_2013_SER.csv')
+AOA <- read_csv('../additional_data/kuperman_2012_AOA.csv')
+SUBTL <- read_csv('../additional_data/brysbaert_2012_SUBTLEX_POS.csv')
+humor <- read_csv('../additional_data/engelthaler_hills_2018_humor.csv')
+ding <- read_csv('../additional_data/dingemanse_thompson_2020.csv')
+ARC <- read_csv('../additional_data/shaoul_westbury_2010_ARC.csv')
+conc <- read_csv('../additional_data/brysbaert_2014_concreteness.csv')
 ```
 
 Rename folders and simplify data frames to include only relevant info. Also make Lancaster norm Word column lowercase. Log10 transform SUBTLEX frequencies and contextual diversity:
@@ -305,10 +296,9 @@ all_mdl <- brm(rating | weights(w) ~ 1 + conc_z + SER_z +
                prior = priors,
                
                # MCMC settings:
-               seed = 666,
-               control = mcmc_controls,
-               cores = 4,
-               warmup = 2000, iter = 4000, chains = 4)
+               
+               seed = 666, control = mcmc_controls,
+               cores = 4, warmup = 2000, iter = 4000, chains = 4)
 
 # Save:
 
@@ -320,17 +310,16 @@ Do the one without POS:
 ```{r}
 all_mdl_no_POS <- brm(rating | weights(w) ~ 1 + conc_z + SER_z +
                         AOA_z + LogFreq_z + 
-                 humor_z + logletter_z + ARC_z,
+                        humor_z + logletter_z + ARC_z,
                
-               data = icon_red,
+                      data = icon_red,
                
-               prior = priors,
+                      prior = priors,
                
-               # MCMC settings:
-               seed = 666,
-               control = mcmc_controls,
-               cores = 4,
-               warmup = 2000, iter = 4000, chains = 4)
+                      # MCMC settings:
+                      
+                      seed = 666, control = mcmc_controls,
+                      cores = 4, warmup = 2000, iter = 4000, chains = 4)
 
 # Save:
 save(all_mdl_no_POS, file = '../models/all_mdl_no_POS.RData')
@@ -353,24 +342,21 @@ Put it all into one model without regression weights:
 ```{r no_weight_mdl, warning = FALSE, message = FALSE}
 noweight_mdl <- brm(rating ~ 1 + conc_z + SER_z +
                       AOA_z + LogFreq_z +
-                 humor_z + POS_simple + logletter_z + ARC_z +
-                 SER_z:ARC_z,
+                      humor_z + POS_simple + logletter_z + ARC_z +
+                      SER_z:ARC_z,
                
-               data = icon_red,
+                    data = icon_red,
                
-               prior = priors,
+                    prior = priors,
                
-               # MCMC settings:
-               seed = 666,
-               control = mcmc_controls,
-               cores = 4,
-               warmup = 2000, iter = 4000, chains = 4)
+                    # MCMC settings:
+                    
+                    seed = 666, control = mcmc_controls,
+                    cores = 4, warmup = 2000, iter = 4000, chains = 4)
 
 # Save:
 
 save(noweight_mdl, file = '../models/noweight_mdl.RData')
 ```
 
-
 This completes this analysis.
-

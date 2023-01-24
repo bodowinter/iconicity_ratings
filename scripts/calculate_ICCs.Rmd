@@ -1,0 +1,152 @@
+---
+title: "ICC Calculations"
+author: "Gary Lupyan"
+date: "11/29/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(multicon)
+library(psych)
+```
+
+# Load in iconicity data
+
+Only words w/ >=10 ratings included in the ICC analysis
+```{r}
+data_raw <- read.csv("processed_data_all_after_additions/iconicity_ratings_raw_deanonymized_with_NAs.csv")
+data_agg <- data_raw %>% group_by(word) %>% 
+	summarize(n_ratings=sum(!is.na(key)), n=n(), 
+						prop_known=1-mean(is.na(key)), 
+						rating=mean(key,na.rm=TRUE), 
+						rating_sd=sd(key,na.rm=TRUE),
+						median_rt=median(rt))
+													
+data_agg <- data_agg %>% filter(n_ratings>=10)
+
+data_raw <- filter(data_raw,word %in% data_agg$word) %>% 
+	left_join(select(data_agg,word,prop_known,rating)) %>% 
+	rename(mean_rating=rating)
+
+
+
+```
+Get three data-frames for subgroup analyses: words known to everyone; words with mean iconicity ratings outside the 3.5-4.5 range (the subgroup included in the manuscript), and the group with mean ratings outside the 3.25-4.75 range.
+```{r}
+better_known_raw <- filter(data_raw,prop_known == 1.0)
+mid_removed_iconicity1_raw <- filter(data_raw,mean_rating<=3.5 | mean_rating>=4.5)
+mid_removed_iconicity2_raw <- filter(data_raw,mean_rating<=3.25 | mean_rating>=4.75)
+```
+
+# Results
+
+## ICC results {.tabset}
+
+### All words
+ICC ratings for all the words that fulfill our main inclusion criteria.
+Code below transforms data into wide-format for ICC analysis
+```{r}
+by_word_all <- data_raw  %>% group_by(word) %>%
+	group_by(subj_code,word) %>% 
+	summarize(key=mean(key)) %>% select(subj_code,word,key) %>% 
+	pivot_wider(id_cols=word,names_from=subj_code,values_from=key) %>% 
+	data.frame %>% select(-word)
+ICC(by_word_all,missing=FALSE)
+
+```
+
+### Just words known to all
+ICCs for words that are known to everyone
+```{r}
+by_word_better_known <- better_known_raw  %>%
+	group_by(subj_code,word) %>% 
+	summarize(key=mean(key)) %>% select(subj_code,word,key) %>% 
+	pivot_wider(id_cols=word,names_from=subj_code,values_from=key) %>% 
+	data.frame %>% select(-word)
+ICC(by_word_better_known,missing=FALSE)
+
+```
+
+
+### Middle iconicity range removed (smaller window removed)
+9282 words
+```{r}
+by_word_mid_removed <- mid_removed_iconicity1_raw %>%
+	group_by(subj_code,word) %>% 
+	summarize(key=mean(key)) %>% select(subj_code,word,key) %>% 
+	pivot_wider(id_cols=word,names_from=subj_code,values_from=key) %>% 
+	data.frame %>% select(-word)
+ICC(by_word_mid_removed,missing=FALSE)
+
+```
+
+### Middle iconicity range removed (larger window removed)
+6497 words
+```{r}
+by_word_mid_removed <- mid_removed_iconicity2_raw %>%
+	group_by(subj_code,word) %>% 
+	summarize(key=mean(key)) %>% select(subj_code,word,key) %>% 
+	pivot_wider(id_cols=word,names_from=subj_code,values_from=key) %>% 
+	data.frame %>% select(-word)
+ICC(by_word_mid_removed,missing=FALSE)
+
+```
+
+
+## Comparison to concreteness ratings
+Let's compare the above ICCs to Brysbaert's widely used concreteness ratings.
+```{r}
+load(file="/Users/glupyan/Documents/EvoLang2022/concreteness_analysis/concreteness_trial.rda")
+
+concreteness.participant <- concreteness.participant %>% 
+	mutate(known=if_else(Rating =='n' | Rating == 'N',0,1)) %>% 
+	mutate(Rating = ifelse(known==0,NA,as.numeric(Rating)))
+
+concreteness_ratings_agg <- concreteness.participant %>% group_by(Word) %>%
+	summarize(Rating=mean(as.numeric(Rating),na.rm=TRUE), prop_known=mean(known)) %>% rename(mean_rating=Rating)
+
+concreteness_ratings_raw <- concreteness.participant %>% group_by(WorkerId,Word) %>%
+	summarize(Rating=mean(as.numeric(Rating),na.rm=TRUE)) %>% 
+	left_join(select(concreteness_ratings_agg,Word,mean_rating,prop_known))
+
+
+concreteness_better_known_raw <- filter(concreteness_ratings_raw,prop_known==1)
+concreteness_middle_removed_raw <- filter(concreteness_ratings_raw,mean_rating<=2.5 | mean_rating >= 3.5)
+```																	
+
+## Concreteness ICC results {.tabset}
+
+### All words
+
+```{r}
+conc_matrix <- concreteness_ratings_raw %>% 
+	pivot_wider(id_cols=Word,names_from=WorkerId,values_from=Rating) %>% 
+	data.frame %>% select(-Word)
+ICC(conc_matrix)
+```
+
+### Words known to all
+```{r}
+conc_matrix_better_known <- concreteness_better_known_raw %>% 
+	pivot_wider(id_cols=Word,names_from=WorkerId,values_from=Rating) %>% 
+	data.frame %>% select(-Word)
+ICC(conc_matrix_better_known)
+
+```
+
+### Middle range removed
+```{r}
+
+conc_matrix_middle_removed_matrix <- concreteness_middle_removed_raw %>% 
+	pivot_wider(id_cols=Word,names_from=WorkerId,values_from=Rating) %>% 
+	data.frame %>% select(-Word)
+ICC(conc_matrix_middle_removed_matrix)
+```
+
+
+

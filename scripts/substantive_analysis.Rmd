@@ -37,29 +37,22 @@ R.Version()$version.string
 Load iconicity ratings:
 
 ```{r, warning = FALSE, message = FALSE}
-icon <- read.csv('../ratings/iconicity_ratings.csv')
+icon <- read_csv('../ratings/iconicity_ratings_cleaned.csv')
 ```
 
 Load additional datasets. Getting "buffer" errors with `read.csv()`, so will use `read.csv()` and `as_tibble()` for now.
 
 ```{r, warning = FALSE, message = FALSE}
-# Data for replications:
-
-SER <- read.csv('../additional_data/juhasz_yap_2013_SER.csv',
-                stringsAsFactors = FALSE) %>% as_tibble()
-AOA <- read.csv('../additional_data/kuperman_2012_AOA.csv',
-                stringsAsFactors = FALSE) %>% as_tibble()
-lanc <- read.csv('../additional_data/lancaster_sensorimotor_norms_2019.csv',
-                stringsAsFactors = FALSE) %>% as_tibble()
-SUBTL <- read.csv('../additional_data/brysbaert_2012_SUBTLEX_POS.csv',
-                stringsAsFactors = FALSE) %>% as_tibble()
-humor <- read.csv('../additional_data/engelthaler_hills_2018_humor.csv',
-                stringsAsFactors = FALSE) %>% as_tibble()
-ding <- read.csv('../additional_data/dingemanse_thompson_2020.csv',
-                stringsAsFactors = FALSE) %>% as_tibble()
+SER <- read_csv('../additional_data/juhasz_yap_2013_SER.csv')
+AOA <- read_csv('../additional_data/kuperman_2012_AOA.csv')
+SUBTL <- read_csv('../additional_data/brysbaert_2012_SUBTLEX_POS.csv')
+humor <- read_csv('../additional_data/engelthaler_hills_2018_humor.csv')
+ding <- read_csv('../additional_data/dingemanse_thompson_2020.csv')
+ARC <- read_csv('../additional_data/shaoul_westbury_2010_ARC.csv')
+conc <- read_csv('../additional_data/brysbaert_2014_concreteness.csv')
 ```
 
-Rename folders and simplify data frames to include only relevant info. Also make Lancaster norm Word column lowercase. Log10 transform SUBTLEX frequencies and contextual diversity:
+Rename folders and simplify data frames to include only relevant info. Log10 transform SUBTLEX frequencies and contextual diversity:
 
 ```{r}
 # Age-of-acquisition data:
@@ -95,7 +88,6 @@ icon <- left_join(icon, SER, by = c('word' = 'Word'))
 icon <- left_join(icon, AOA, by = c('word' = 'Word'))
 icon <- left_join(icon, SUBTL, by = c('word' = 'Word'))
 icon <- left_join(icon, humor, by = c('word' = 'word'))
-icon <- left_join(icon, lanc, by = c('word' = 'Word'))
 icon <- left_join(icon, ding, by = c('word' = 'word'))
 ```
 
@@ -431,6 +423,13 @@ POS_p
 
 ggsave(plot = POS_p, filename = '../figures/POS_preds.pdf',
        width = 7, height = 7)
+```
+
+Check LOO compare for POS effect.
+
+```{r}
+load('../models/all_loo_compare.RData')
+loo_comp
 ```
 
 This completes this analysis.
