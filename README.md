@@ -13,3 +13,6 @@ The main script folder contains the following files:
 - `bayesian_models.Rmd` : posterior predictive checks for all models that will be saved in the folder `pp_checks`
 
 - `substantive_analysis.Rmd` : the main analysis script that reproduces all the main results reported and creates plots (this script loads in the models created by `bayesian_models.Rmd`)
+
+- `calculate_ICCs.Rmd` : inter-rater reliability measures added after review
+
