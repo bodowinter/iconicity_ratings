@@ -2,7 +2,7 @@
 
 This repository contains all the main scripts and data that are needed to reproduce the analysis that we report for the iconicity ratings.
 
-For all analyses using our iconicity ratings, we recommend using the `iconicity_ratings.csv` file in the `ratings` folder. This contains the files that are processed.
+For all analyses using our iconicity ratings, we recommend using the `iconicity_ratings_cleaned.csv` file in the `ratings` folder. This contains the files that are processed.
 
 The main script folder contains the following files:
 
