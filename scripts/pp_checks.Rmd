@@ -14,8 +14,8 @@ This script creates posterior predictive plots for each model.
 Load packages:
 
 ```{r, warning = FALSE, message = FALSE}
-library(brms)
-library(tidyverse)
+library(brms, quietly = TRUE)
+library(tidyverse, quietly = TRUE)
 ```
 
 Load all models from the models folder:
@@ -28,9 +28,16 @@ for (i in seq_along(all_models)) {
 }
 ```
 
-Loop through them to print posterior predictive checks into folder:
+Get rid of `all_loo_compare.RData`:
 
 ```{r}
+all_models <- all_models[all_models != 'all_loo_compare.RData']
+```
+
+
+Loop through them to print posterior predictive checks into folder:
+
+```{r warning = FALSE, message = FALSE}
 model_names <- str_remove(all_models, '.RData')
 
 for (i in seq_along(all_models)) {
